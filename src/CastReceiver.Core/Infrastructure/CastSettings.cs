@@ -252,6 +252,27 @@ public sealed class CastSettings
     /// <summary>预览时是否像"重进一次"那样把界面藏起来（默认是）。</summary>
     public bool IntroPreviewReenter { get; set; } = true;
 
+    // ---------------- 入场 / 出场 / 停投 特效（设置 → 画面 → 特效） ----------------
+
+    /// <summary>
+    /// 开场动画的**入场特效**：fade＝淡入（默认）/ zoom＝放大进入 / slam＝白闪进入 / none＝直接出现。
+    /// </summary>
+    public string IntroEnterEffect { get; set; } = "fade";
+
+    /// <summary>
+    /// 开场动画的**出场特效**：fade＝淡出（默认）/ shrink＝缩小消失 / flash＝白闪淡出 / none＝直接消失。
+    /// </summary>
+    public string IntroExitEffect { get; set; } = "fade";
+
+    /// <summary>
+    /// 投屏停止时的**画面特效**：shrink＝丝滑缩回左侧画面区（默认）/ fade＝原地淡出 / none＝直接消失。
+    /// 缩回那种只在"全屏停止"时才有意义（窗口模式下画面本来就在左边那块）。
+    /// </summary>
+    public string CastStopEffect { get; set; } = "shrink";
+
+    /// <summary>停投特效时长（毫秒，默认 620）。</summary>
+    public int CastStopEffectMs { get; set; } = 620;
+
     // ---------------- 安卓 adb 鼠标控制（⑧） ----------------
 
     /// <summary>用鼠标控制手机（点击→点按、滚轮/拖动→滑动）。默认关闭。</summary>

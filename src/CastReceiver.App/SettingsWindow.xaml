@@ -279,6 +279,68 @@
                                                   AutomationProperties.Name="全屏时阻止屏保与休眠" />
                                 </Grid>
 
+
+                                <TextBlock Text="特效" Style="{DynamicResource S.H2}" Margin="0,24,0,0" />
+                                <TextBlock Style="{DynamicResource S.Desc}" Text="开场动画的进出场，以及停止投屏时画面怎么收" Margin="0,5,0,0" />
+
+                                <Grid Margin="0,14,0,0">
+                                    <TextBlock Text="入场特效" Style="{DynamicResource S.Caption}" VerticalAlignment="Center" />
+                                    <Border Background="{DynamicResource B.SurfaceHi}" CornerRadius="10" Padding="4" HorizontalAlignment="Right">
+                                        <StackPanel Orientation="Horizontal">
+                                            <RadioButton x:Name="SegEnterFade" Style="{DynamicResource S.Segment}" GroupName="entereffect" Content="淡入" Tag="fade"
+                                                         Checked="IntroStyle_Changed" AutomationProperties.Name="入场特效 淡入" />
+                                            <RadioButton x:Name="SegEnterZoom" Style="{DynamicResource S.Segment}" GroupName="entereffect" Content="放大进入" Tag="zoom"
+                                                         Checked="IntroStyle_Changed" AutomationProperties.Name="入场特效 放大进入" />
+                                            <RadioButton x:Name="SegEnterSlam" Style="{DynamicResource S.Segment}" GroupName="entereffect" Content="白闪进入" Tag="slam"
+                                                         Checked="IntroStyle_Changed" AutomationProperties.Name="入场特效 白闪进入" />
+                                            <RadioButton x:Name="SegEnterNone" Style="{DynamicResource S.Segment}" GroupName="entereffect" Content="直接出现" Tag="none"
+                                                         Checked="IntroStyle_Changed" AutomationProperties.Name="入场特效 直接出现" />
+                                        </StackPanel>
+                                    </Border>
+                                </Grid>
+
+                                <Grid Margin="0,10,0,0">
+                                    <TextBlock Text="出场特效" Style="{DynamicResource S.Caption}" VerticalAlignment="Center" />
+                                    <Border Background="{DynamicResource B.SurfaceHi}" CornerRadius="10" Padding="4" HorizontalAlignment="Right">
+                                        <StackPanel Orientation="Horizontal">
+                                            <RadioButton x:Name="SegExitFade" Style="{DynamicResource S.Segment}" GroupName="exiteffect" Content="淡出" Tag="fade"
+                                                         Checked="IntroStyle_Changed" AutomationProperties.Name="出场特效 淡出" />
+                                            <RadioButton x:Name="SegExitShrink" Style="{DynamicResource S.Segment}" GroupName="exiteffect" Content="缩小消失" Tag="shrink"
+                                                         Checked="IntroStyle_Changed" AutomationProperties.Name="出场特效 缩小消失" />
+                                            <RadioButton x:Name="SegExitFlash" Style="{DynamicResource S.Segment}" GroupName="exiteffect" Content="白闪淡出" Tag="flash"
+                                                         Checked="IntroStyle_Changed" AutomationProperties.Name="出场特效 白闪淡出" />
+                                            <RadioButton x:Name="SegExitNone" Style="{DynamicResource S.Segment}" GroupName="exiteffect" Content="直接消失" Tag="none"
+                                                         Checked="IntroStyle_Changed" AutomationProperties.Name="出场特效 直接消失" />
+                                        </StackPanel>
+                                    </Border>
+                                </Grid>
+
+                                <Grid Margin="0,10,0,0">
+                                    <TextBlock Text="停投特效" Style="{DynamicResource S.Caption}" VerticalAlignment="Center" />
+                                    <Border Background="{DynamicResource B.SurfaceHi}" CornerRadius="10" Padding="4" HorizontalAlignment="Right">
+                                        <StackPanel Orientation="Horizontal">
+                                            <RadioButton x:Name="SegStopShrink" Style="{DynamicResource S.Segment}" GroupName="stopeffect" Content="缩回左侧画面" Tag="shrink"
+                                                         Checked="IntroStyle_Changed" AutomationProperties.Name="停投特效 缩回左侧画面" />
+                                            <RadioButton x:Name="SegStopFade" Style="{DynamicResource S.Segment}" GroupName="stopeffect" Content="原地淡出" Tag="fade"
+                                                         Checked="IntroStyle_Changed" AutomationProperties.Name="停投特效 原地淡出" />
+                                            <RadioButton x:Name="SegStopNone" Style="{DynamicResource S.Segment}" GroupName="stopeffect" Content="直接消失" Tag="none"
+                                                         Checked="IntroStyle_Changed" AutomationProperties.Name="停投特效 直接消失" />
+                                        </StackPanel>
+                                    </Border>
+                                </Grid>
+                                <Grid Margin="0,10,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="76" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="时长" Style="{DynamicResource S.Caption}" VerticalAlignment="Center" />
+                                    <Slider x:Name="SldStopEffectMs" Grid.Column="1" Style="{DynamicResource S.Slider}" Minimum="200" Maximum="1600"
+                                            VerticalAlignment="Center" ValueChanged="IntroStyle_Changed" AutomationProperties.Name="停投特效时长毫秒" />
+                                    <TextBlock x:Name="TxtStopEffectMs" Grid.Column="2" Style="{DynamicResource S.Mono}" FontSize="11.5" Margin="10,0,0,0"
+                                               VerticalAlignment="Center" Text="620 ms" />
+                                </Grid>
+
                                 <TextBlock Text="加密库（截图与录像）" Style="{DynamicResource S.H2}" Margin="0,24,0,0" />
                                 <TextBlock FontSize="11.5" Foreground="{DynamicResource B.TextDim}" Margin="0,8,0,0" TextWrapping="Wrap" LineHeight="18"
                                            Text="截图与录像加密存放，只有本程序用账号密码能解开；库位置随 Windows 用户隔离，不会被云盘同步。" />

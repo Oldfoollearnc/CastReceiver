@@ -280,7 +280,7 @@ public partial class MainWindow : Window
             }
             catch { }
         };
-        MiracastHost.EscapePressed += () => Dispatcher.BeginInvoke(() => SetFullscreen(false));
+        MiracastHost.EscapePressed += () => Dispatcher.BeginInvoke(() => RequestExitFullscreen());
         PreviewKeyDown += OnPreviewKeyDown;
         Loaded += OnLoaded;
         Closing += OnClosing;
@@ -293,7 +293,7 @@ public partial class MainWindow : Window
     {
         _tray = new TrayIconService(this,
             showWindow: () => Dispatcher.BeginInvoke(() => { Show(); WindowState = WindowState.Normal; Activate(); }),
-            toggleFullscreen: () => Dispatcher.BeginInvoke(() => SetFullscreen(!_fullscreen)),
+            toggleFullscreen: () => Dispatcher.BeginInvoke(() => { if (_fullscreen) RequestExitFullscreen(); else SetFullscreen(true); }),
             screenshot: () => Dispatcher.BeginInvoke(TakeScreenshot),
             settings: () => Dispatcher.BeginInvoke(() => BtnSettings_Click(this, new RoutedEventArgs())),
             exit: () => Dispatcher.BeginInvoke(() => { _exitRequested = true; Close(); }));
@@ -311,7 +311,7 @@ public partial class MainWindow : Window
             {
                 switch (id)
                 {
-                    case HotkeyService.IdFullscreen: SetFullscreen(!_fullscreen); break;
+                    case HotkeyService.IdFullscreen: if (_fullscreen) RequestExitFullscreen(); else SetFullscreen(true); break;
                     case HotkeyService.IdScreenshot: TakeScreenshot(); break;
                     case HotkeyService.IdRecord: ToggleRecording(); break;
                     case HotkeyService.IdPanic: PanicHide(); break;
@@ -884,8 +884,10 @@ public partial class MainWindow : Window
             RefreshUi();
         }, DispatcherPriority.Background);
 
-        _host.Miracast.Disconnected += (_, _) => Dispatcher.BeginInvoke(() =>
+        _host.Miracast.Disconnected += (_, _) => Dispatcher.BeginInvoke(async () =>
         {
+            // 手机自己断开时也给一次"缩回左侧"的转场（原理同手动停止）
+            await PlayCastStopTransitionAsync();
             MiracastHost.Detach();
             SyncMultiView("Miracast 断开");   // 主画面可能落回 AirPlay 某一路
             AttachMiniPicture();          // 有别的画面就接着看，一路都没了才收起小窗
@@ -2370,8 +2372,8 @@ public partial class MainWindow : Window
 
     private void OnPreviewKeyDown(object sender, KeyEventArgs e)
     {
-        if (e.Key == Key.F11) { SetFullscreen(!_fullscreen); e.Handled = true; }
-        else if (e.Key == Key.Escape && _fullscreen) { SetFullscreen(false); e.Handled = true; }
+        if (e.Key == Key.F11) { if (_fullscreen) RequestExitFullscreen(); else SetFullscreen(true); e.Handled = true; }
+        else if (e.Key == Key.Escape && _fullscreen) { RequestExitFullscreen(); e.Handled = true; }
     }
 
     private void SetFullscreen(bool on)
@@ -2591,7 +2593,7 @@ public partial class MainWindow : Window
         if (_bar is null)
         {
             _bar = new OverlayBarWindow { Owner = this };
-            _bar.ToggleFullscreenRequested += () => SetFullscreen(!_fullscreen);
+            _bar.ToggleFullscreenRequested += () => { if (_fullscreen) RequestExitFullscreen(); else SetFullscreen(true); };
             _bar.ScreenshotRequested += TakeScreenshot;
             _bar.RecordRequested += ToggleRecording;
             _bar.FitToggled += () => { CycleFit(); _lastBarActivity = DateTime.UtcNow; };
@@ -4074,6 +4076,9 @@ public partial class MainWindow : Window
         RefreshUi();
         try
         {
+            // 先放"画面缩回左侧"的转场（全屏停止时才走），再真正关掉接收端 ——
+            // 反过来的话画面已经没了，就只剩一块黑幕，看不到"大变小"的过程。
+            await PlayCastStopTransitionAsync();
             await _host.StopMiracastAsync();
             _host.StopAirPlay();
             MiracastHost.Detach();
@@ -4086,6 +4091,123 @@ public partial class MainWindow : Window
             await PollMirrorStatusAsync();
             RefreshUi();
         }
+    }
+
+    // ---------------------------------------------------------------- 停投转场
+    //
+    // 用户要的效果：全屏看着的时候手动停掉画面 —— 画面从四个角一起**丝滑缩小**到左侧那块画面区，
+    // 缩的过程中其余地方是黑的；落位之后黑幕再淡掉，"右边的界面慢慢亮起来"。
+    // 视频是 HwndHost（空域限制，WPF 动画盖不住），所以缩放放在**合成层**做（见 CompositionVideoHost.BeginMorph），
+    // 窗口其余部分的黑幕用一块普通 WPF Border 盖住即可。
+
+    /// <summary>放一次"停投/退全屏"转场；不需要或条件不满足时直接返回。</summary>
+    /// <param name="keepMirror">true＝只是退出全屏，画面继续投（不冻结、不关接收端）。</param>
+    private async Task PlayCastStopTransitionAsync(bool keepMirror = false)
+    {
+        var s = _host.Settings;
+        if (!_fullscreen || !_hadCast) return;                                        // 只有全屏时才谈得上"缩回去"
+        if (!string.Equals(s.CastStopEffect, "shrink", StringComparison.OrdinalIgnoreCase)) return;
+        if (MiracastHost.SurfaceBrush is null) return;                                // 没有画面，没什么可缩的
+        if (_closing || _morphRunning) return;
+
+        int ms = Math.Clamp(s.CastStopEffectMs > 0 ? s.CastStopEffectMs : 620, 200, 1600);
+        bool barWasVisible = _bar?.IsVisible == true;
+        _morphRunning = true;
+        try
+        {
+            if (!keepMirror) MiracastHost.FreezeLastFrame();   // 停投：停住最后一帧，转场期间画面要看得见
+            MorphVeil.Opacity = 1;                             // 先把右边的界面用黑幕盖住
+
+            // 第一步：子窗口先铺满整个窗口（画面还是整屏），这样退出全屏时看不出跳变
+            if (!MiracastHost.BeginMorphCover(new System.Windows.Size(ActualWidth, ActualHeight)))
+            {
+                MorphVeil.Opacity = 0;
+                return;
+            }
+
+            SetFullscreen(false);                    // 窗口回窗口态
+            try { _bar?.Hide(); } catch { }          // 控制条是独立顶层窗，黑幕盖不住它，转场期间先收起来
+
+            // 等窗口真的缩回窗口态（拿进全屏前记下的尺寸比一下），才知道画面区最终在哪
+            var expected = _prevBounds.Width > 200 && _prevBounds.Height > 150
+                ? new System.Windows.Size(_prevBounds.Width, _prevBounds.Height)
+                : new System.Windows.Size(0, 0);
+            for (int i = 0; i < 12; i++)
+            {
+                await Task.Delay(40);
+                UpdateLayout();
+                if (expected.Width <= 0) break;
+                if (Math.Abs(ActualWidth - expected.Width) < 2 && Math.Abs(ActualHeight - expected.Height) < 2) break;
+            }
+
+            var size = new System.Windows.Size(ActualWidth, ActualHeight);
+            var dock = StageCard.TranslatePoint(new System.Windows.Point(0, 0), this);
+            var target = new System.Windows.Rect(dock, new System.Windows.Size(StageCard.ActualWidth, StageCard.ActualHeight));
+            if (!MiracastHost.MorphTo(target, size, ms))
+            {
+                MiracastHost.EndMorph();
+                await FadeMorphVeilAsync(220);
+                return;
+            }
+
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            while (sw.ElapsedMilliseconds < ms + 60)
+            {
+                MiracastHost.KeepMorphCovering(new System.Windows.Size(ActualWidth, ActualHeight));
+                await Task.Delay(16);
+            }
+
+            MiracastHost.EndMorph();                 // 画面交回画面区（位置正好是刚缩到的落点，看不出跳）
+            await Task.Delay(40);
+            await FadeMorphVeilAsync(380);           // 黑幕淡掉 → 右边的界面亮起来
+        }
+        catch
+        {
+            try { MiracastHost.EndMorph(); } catch { }
+            try { MorphVeil.Opacity = 0; } catch { }
+        }
+        finally
+        {
+            _morphRunning = false;
+            // 只是退出全屏（画面还在投）：把原来露着的控制条还给它。
+            // 停投那条路径不还原 —— 都没在投了，控制条本来就该收起来。
+            if (keepMirror && barWasVisible && !_fullscreen && !_closing)
+            {
+                try { ShowBar(); } catch { }
+            }
+        }
+    }
+
+    private bool _morphRunning;
+
+    /// <summary>用户主动退出全屏：开着"缩回左侧"特效且有画面时走转场，否则直接切。</summary>
+    private void RequestExitFullscreen()
+    {
+        if (!_fullscreen) return;
+        if (string.Equals(_host.Settings.CastStopEffect, "shrink", StringComparison.OrdinalIgnoreCase)
+            && MiracastHost.SurfaceBrush is not null && _hadCast && !_closing)
+        {
+            _ = PlayCastStopTransitionAsync(keepMirror: true);
+            return;
+        }
+        SetFullscreen(false);
+    }
+
+    /// <summary>黑幕淡出。</summary>
+    private async Task FadeMorphVeilAsync(int ms)
+    {
+        try
+        {
+            var fade = new System.Windows.Media.Animation.DoubleAnimation(1, 0, TimeSpan.FromMilliseconds(Math.Clamp(ms, 120, 1200)));
+            fade.EasingFunction = new System.Windows.Media.Animation.CubicEase { EasingMode = System.Windows.Media.Animation.EasingMode.EaseOut };
+            var tcs = new TaskCompletionSource<bool>();
+            fade.Completed += (_, _) => tcs.TrySetResult(true);
+            MorphVeil.BeginAnimation(OpacityProperty, fade);
+            await Task.WhenAny(tcs.Task, Task.Delay(ms + 400));
+            MorphVeil.BeginAnimation(OpacityProperty, null);
+            MorphVeil.Opacity = 0;
+        }
+        catch { try { MorphVeil.Opacity = 0; } catch { } }
     }
 
     /// <summary>结束本次投屏会话：清计时、清本次保存计数、清画面统计，并隐藏会话卡。</summary>

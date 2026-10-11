@@ -499,13 +499,122 @@ public sealed class CompositionVideoHost : HwndHost
     {
         try
         {
-            if (_visual is null) return;
+            if (_visual is null || _morphing) return;      // 转场期间中心点由动画驱动，别来抢
             double dpi = System.Windows.Media.VisualTreeHelper.GetDpi(this).DpiScaleX;
             if (dpi <= 0) dpi = 1;
             _visual.CenterPoint = new Vector3((float)(ActualWidth * dpi / 2), (float)(ActualHeight * dpi / 2), 0f);
         }
         catch { }
     }
+
+    // ---------------------------------------------------------------- 停投转场（画面"缩回左侧"）
+    //
+    // 做法：把子窗口临时铺满整个窗口客户区（绕过 WPF 布局，每帧重申一次），
+    // 画面本身还是铺满这个宿主；然后在**合成层**把画面整体缩到目标矩形并平移到它的中心 ——
+    // 全是 GPU 合成动画，不重挂子窗口、不重解码、不闪。黑色底一直铺着，
+    // 所以转场期间窗口其余部分是纯黑的（用户要的就是这个观感）。
+
+    private bool _morphing;
+
+    /// <summary>停住当前帧（转场期间画面要一直可见，才谈得上"缩回去"）。</summary>
+    public void FreezeLastFrame()
+    {
+        try { _player?.Pause(); } catch { }
+    }
+
+    /// <summary>
+    /// 转场第一步：子窗口先铺满整个窗口、画面保持"整屏"，黑底铺上。
+    /// 分两步是必须的：退出全屏后画面区会变小，目标矩形得等布局算完才知道，
+    /// 但那之前又不能让人看见画面已经缩进小框里（会跳一下）。
+    /// </summary>
+    public bool BeginMorphCover(System.Windows.Size windowDip)
+    {
+        try
+        {
+            if (_hwnd == IntPtr.Zero || _compositor is null || _visual is null) return false;
+            _morphing = true;
+            KeepMorphCovering(windowDip);
+            if (_background is not null) _background.Opacity = 1;
+            return true;
+        }
+        catch { _morphing = false; return false; }
+    }
+
+    /// <summary>
+    /// 转场第二步：把画面从"整屏"丝滑缩到 <paramref name="targetDip"/>（相对窗口客户区、WPF 单位）。
+    /// 调用方在动画期间要反复调 <see cref="KeepMorphCovering"/>，结束后调 <see cref="EndMorph"/>。
+    /// </summary>
+    public bool MorphTo(System.Windows.Rect targetDip, System.Windows.Size windowDip, int durationMs)
+    {
+        try
+        {
+            if (!_morphing || _compositor is null || _visual is null) return false;
+            if (windowDip.Width < 40 || windowDip.Height < 40 || targetDip.Width < 20 || targetDip.Height < 20) return false;
+
+            double dpi = System.Windows.Media.VisualTreeHelper.GetDpi(this).DpiScaleX;
+            if (dpi <= 0) dpi = 1;
+
+            float scale = (float)Math.Clamp(targetDip.Width / windowDip.Width, 0.05, 1.0);
+            var center = new Vector3(
+                (float)((targetDip.X + targetDip.Width / 2) * dpi),
+                (float)((targetDip.Y + targetDip.Height / 2) * dpi),
+                0f);
+
+            var ease = _compositor.CreateCubicBezierEasingFunction(new Vector2(0.16f, 0.84f), new Vector2(0.22f, 1f));
+            var ms = Math.Clamp(durationMs, 150, 2000);
+
+            var scaleAnim = _compositor.CreateVector3KeyFrameAnimation();
+            scaleAnim.InsertKeyFrame(1f, new Vector3(scale, scale, 1f), ease);
+            scaleAnim.Duration = TimeSpan.FromMilliseconds(ms);
+            _visual.StartAnimation("Scale", scaleAnim);
+
+            var centerAnim = _compositor.CreateVector3KeyFrameAnimation();
+            centerAnim.InsertKeyFrame(1f, center, ease);
+            centerAnim.Duration = TimeSpan.FromMilliseconds(ms);
+            _visual.StartAnimation("CenterPoint", centerAnim);
+            return true;
+        }
+        catch { return false; }
+    }
+
+    /// <summary>转场期间每帧重申一次"子窗口铺满整个窗口"，否则 WPF 的布局会把它拉回画面区。</summary>
+    public void KeepMorphCovering(System.Windows.Size windowDip)
+    {
+        try
+        {
+            if (_hwnd == IntPtr.Zero) return;
+            double dpi = System.Windows.Media.VisualTreeHelper.GetDpi(this).DpiScaleX;
+            if (dpi <= 0) dpi = 1;
+            int w = (int)Math.Round(windowDip.Width * dpi);
+            int h = (int)Math.Round(windowDip.Height * dpi);
+            if (w < 40 || h < 40) return;
+            SetWindowPos(_hwnd, IntPtr.Zero, 0, 0, w, h, SwpNoZOrder | SwpNoActivate);
+        }
+        catch { }
+    }
+
+    /// <summary>转场结束：画面恢复"铺满本宿主"，子窗口交回 WPF 布局。</summary>
+    public void EndMorph()
+    {
+        try
+        {
+            if (!_morphing) return;
+            _morphing = false;
+            _visual?.StopAnimation("Scale");
+            _visual?.StopAnimation("CenterPoint");
+            if (_visual is not null)
+            {
+                _visual.Scale = new Vector3((float)_zoom, (float)_zoom, 1f);
+            }
+            UpdateCenterPoint();
+            if (_background is not null) _background.Opacity = 1;
+            // 交回布局：让 WPF 重新按画面区摆放子窗口
+            try { InvalidateArrange(); } catch { }
+        }
+        catch { }
+    }
+
+    private const uint SwpNoZOrder = 0x0004, SwpNoActivate = 0x0010;
 
     /// <summary>兼容旧接口：true=铺满，false=适应。</summary>
     public void SetFillMode(bool fill) => Fit = fill ? VideoFit.Fill : VideoFit.Fit;

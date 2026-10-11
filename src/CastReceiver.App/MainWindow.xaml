@@ -481,6 +481,12 @@
                                Margin="0,6,0,0" HorizontalAlignment="Center" Text="手机与本机连同一个 Wi-Fi 即可" />
                 </StackPanel>
             </Grid>
+
+            <!-- 停投转场用的黑幕：全屏停止时画面要"缩回左侧"，那期间其余地方先全黑，
+                 等画面落位后再把它淡掉，右边的界面就"亮起来"了。
+                 （视频是 HwndHost，WPF 盖不住它，所以这块黑幕只管右边/上下的界面区域。） -->
+            <Border x:Name="MorphVeil" Grid.RowSpan="3" Panel.ZIndex="9000" Background="#000000"
+                    Opacity="0" IsHitTestVisible="False" />
         </Grid>
     </Border>
 </Window>
