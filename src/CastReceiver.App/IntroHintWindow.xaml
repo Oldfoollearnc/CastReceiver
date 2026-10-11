@@ -4,16 +4,17 @@
         Title="跳过提示" WindowStyle="None" AllowsTransparency="True" Background="Transparent"
         ShowInTaskbar="False" ShowActivated="False" Topmost="True" ResizeMode="NoResize"
         SizeToContent="WidthAndHeight" WindowStartupLocation="Manual"
-        FontFamily="{DynamicResource F.Ui}" Focusable="False">
-    <!-- 入场动画演到"程序已经全部就绪"时，在画面下方那两条黑边里浮出这一条：
-         告诉用户可以点一下跳过。它是**点击穿透**的（见 code-behind 的 WS_EX_TRANSPARENT），
-         所以点它等于点入场窗本身，照样跳过。 -->
-    <Border Background="#A6000000" CornerRadius="999" Padding="16,8" BorderBrush="#2EFFFFFF" BorderThickness="1"
-            Margin="12">
+        FontFamily="{DynamicResource F.Ui}" Foreground="{DynamicResource B.Text}"
+        TextOptions.TextFormattingMode="Ideal" Focusable="False">
+    <!-- 入场动画演到"程序已经全部就绪"时，在画面下边那条黑边里浮出这一条：提醒可以点一下跳过。
+         样式跟主界面同一套：状态点 + 细描边圆角胶囊，底色/文字/强调色全部走主题令牌
+         （和画面上的状态浮层 StatsOverlay 用的是同一组 B.OverlayBgSoft / B.Line）。
+         它是**点击穿透**的（见 code-behind 的 WS_EX_TRANSPARENT），点它等于点入场窗，照样跳过。 -->
+    <Border Background="{DynamicResource B.OverlayBgSoft}" BorderBrush="{DynamicResource B.Line}" BorderThickness="1"
+            CornerRadius="999" Padding="14,7" Margin="14">
         <StackPanel Orientation="Horizontal">
-            <TextBlock Text="&#xE7C9;" FontFamily="Segoe MDL2 Assets" FontSize="12" Foreground="#E6FFFFFF"
-                       VerticalAlignment="Center" />
-            <TextBlock x:Name="TxtHint" Text="单击鼠标跳过" FontSize="13" Foreground="#F5FFFFFF"
+            <Ellipse Width="6" Height="6" Fill="{DynamicResource B.Accent}" VerticalAlignment="Center" />
+            <TextBlock x:Name="TxtHint" Text="单击鼠标跳过" FontSize="12.5" Foreground="{DynamicResource B.Text}"
                        Margin="8,0,0,0" VerticalAlignment="Center" />
         </StackPanel>
     </Border>

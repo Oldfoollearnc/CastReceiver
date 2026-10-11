@@ -302,6 +302,7 @@ powershell -File tools\uitest\Invoke-VaultSmoke.ps1 -Exe "src\CastReceiver.App\b
 powershell -File tools\uitest\Capture-Window.ps1 -Exe "发布版\投屏Window\投屏Window.exe" -Out docs\ui-main.png -WaitSeconds 14
 powershell -File tools\uitest\Verify-AppearanceIcon.ps1 -Exe "发布版\投屏Window\投屏Window.exe"   # 顶栏「切换外观」图标可见性（深/浅两套主题各一张 + 顶栏放大图）
 powershell -File tools\uitest\Render-AppearanceIconPreview.ps1                                  # 不启动程序，直接离屏渲染该按钮的真实样式
+powershell -File tools\uitest\Render-IntroHintPreview.ps1 -Out _temp\shots\intro-hint.png         # 不启动程序，离屏渲染"单击鼠标跳过"提示条的样式（深/中/浅三种底）
 powershell -File tools\uitest\Invoke-IntroPreviewTest.ps1 -Exe "发布版\投屏Window\投屏Window.exe"  # 入场动画「预览」回归：连点两次，必须收场且界面放回（不能挂黑屏）
 powershell -File tools\uitest\Invoke-StartupCheck.ps1 -Exe "发布版\投屏Window\投屏Window.exe"   # 启动路径回归：动画要按设置播够时长、不能弹异常框、不能留残留窗
 powershell -File tools\uitest\Capture-Surfaces.ps1 -Exe "发布版\投屏Window\投屏Window.exe" -OutDir _temp\shots -Theme Light   # 主界面 + 设置各页一次截全（改样式后自检用）
