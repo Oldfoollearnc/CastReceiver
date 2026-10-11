@@ -154,8 +154,10 @@ $appLog = Join-Path $env:LOCALAPPDATA "CastReceiver\castreceiver.log"
 $startupStamp = if (Test-Path $startupLog) { (Get-Item $startupLog).LastWriteTime } else { [datetime]::MinValue }
 $appStamp = if (Test-Path $appLog) { (Get-Item $appLog).LastWriteTime } else { [datetime]::MinValue }
 
-$clip = Join-Path (Split-Path $Exe) "Assets\intro\intro-ninja.mp4"
-if (-not (Test-Path $clip)) { Write-Host "找不到内置素材：$clip" -ForegroundColor Red; exit 1 }
+# 程序不再内置开场素材了：借桌面 MP4 里最小的一段来测
+$cand = Get-ChildItem "C:\Users\Administrator\Desktop\MP4" -Filter *.mp4 -ErrorAction SilentlyContinue | Sort-Object Length | Select-Object -First 1
+if (-not $cand) { Write-Host "没有可用的片源（桌面 MP4 文件夹里没有 mp4）" -ForegroundColor Red; exit 1 }
+$clip = $cand.FullName
 
 if (Test-Path $WorkRoot) { Remove-Item $WorkRoot -Recurse -Force -ErrorAction SilentlyContinue }
 $settingsRoot = Join-Path $WorkRoot "cfg"

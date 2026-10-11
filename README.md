@@ -303,8 +303,13 @@ powershell -File tools\uitest\Capture-Window.ps1 -Exe "发布版\投屏Window\�
 powershell -File tools\uitest\Verify-AppearanceIcon.ps1 -Exe "发布版\投屏Window\投屏Window.exe"   # 顶栏「切换外观」图标可见性（深/浅两套主题各一张 + 顶栏放大图）
 powershell -File tools\uitest\Render-AppearanceIconPreview.ps1                                  # 不启动程序，直接离屏渲染该按钮的真实样式
 powershell -File tools\uitest\Invoke-IntroPreviewTest.ps1 -Exe "发布版\投屏Window\投屏Window.exe"  # 入场动画「预览」回归：连点两次，必须收场且界面放回（不能挂黑屏）
+powershell -File tools\uitest\Invoke-StartupCheck.ps1 -Exe "发布版\投屏Window\投屏Window.exe"   # 启动路径回归：动画要按设置播够时长、不能弹异常框、不能留残留窗
 powershell -File tools\uitest\Capture-Surfaces.ps1 -Exe "发布版\投屏Window\投屏Window.exe" -OutDir _temp\shots -Theme Light   # 主界面 + 设置各页一次截全（改样式后自检用）
 ```
+
+> **开场素材**：程序不再内置任何画面，素材由你自己添加（设置 → 开场 → 素材 → 「选择本地文件…」）。
+> 因此上面两个入场动画脚本会自动借用 `C:\Users\Administrator\Desktop\MP4` 里最小的那段 mp4 当片源；
+> 想指定别的用 `-IntroSource "file:C:\...\某段.mp4"`。
 
 > **截图注意（反截屏）**：主窗口默认开启「反截屏」（`AntiCapture`，`WDA_EXCLUDEFROMCAPTURE`），
 > 任何**外部**抓屏都拍不到它 —— 抓屏只会得到窗口「背后」的内容，`PrintWindow` 得到黑屏（程序自检 P2/P3 已实测）。

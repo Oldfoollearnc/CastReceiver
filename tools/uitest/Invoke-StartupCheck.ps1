@@ -73,8 +73,14 @@ $settingsRoot = Join-Path $WorkRoot "cfg"
 $vaultRoot = Join-Path $WorkRoot "vault"
 New-Item -ItemType Directory -Force -Path $settingsRoot, $vaultRoot | Out-Null
 
-$clip = Join-Path (Split-Path $Exe) "Assets\intro\intro-ninja.mp4"
-if (-not (Test-Path $clip)) { Write-Bad "找不到内置素材：$clip"; exit 1 }
+# 程序不再内置开场素材了：没指定 -IntroSource 就借桌面 MP4 里最小的一段来测
+if (-not $IntroSource) {
+    $cand = Get-ChildItem "C:\Users\Administrator\Desktop\MP4" -Filter *.mp4 -ErrorAction SilentlyContinue | Sort-Object Length | Select-Object -First 1
+    if (-not $cand) { Write-Bad "没有可用的片源：请用 -IntroSource 指定一个视频文件"; exit 1 }
+    $IntroSource = "file:" + $cand.FullName
+}
+$clip = $IntroSource -replace '^file:', ''
+if (-not (Test-Path $clip)) { Write-Bad "找不到片源：$clip"; exit 1 }
 
 $template = Join-Path $env:LOCALAPPDATA "CastReceiver\settings.json"
 $json = if (Test-Path $template) { Get-Content $template -Raw -Encoding UTF8 | ConvertFrom-Json } else { [pscustomobject]@{} }

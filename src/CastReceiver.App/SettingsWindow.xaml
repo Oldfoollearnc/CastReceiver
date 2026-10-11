@@ -368,7 +368,7 @@
                                 <!-- 实时画布：所见即所得（真实效果用下面「全屏预览一次」） -->
                                 <Border x:Name="IntroPreviewBox" Background="{DynamicResource B.VideoBg}"
                                         BorderBrush="{DynamicResource B.Line}" BorderThickness="1" CornerRadius="12"
-                                        ClipToBounds="True" Height="216" Margin="0,14,0,0">
+                                        ClipToBounds="True" Height="280" Margin="0,14,0,0">
                                     <Grid>
                                         <Grid x:Name="IntroPreviewFit">
                                             <MediaElement x:Name="IntroPreviewMedia" LoadedBehavior="Manual" UnloadedBehavior="Manual"

@@ -35,7 +35,6 @@
     <Content Include="..\..\assets\sample.mp4" Link="Assets\sample.mp4" CopyToOutputDirectory="PreserveNewest" />
     <!-- 启动入场动画的内置片段（设置里可切换，也可导入自己的视频，导入的原文件直接播放不转码）。
          这批小片段由 tools\splash-tool + ffmpeg 裁出来：1280 宽、约 7 秒、带原声。 -->
-    <Content Include="..\..\assets\intro\*.mp4" Link="Assets\intro\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <!-- ⑧ 已停用（安卓 adb 无线鼠标控制）：用户要求先停用、代码保留 ——

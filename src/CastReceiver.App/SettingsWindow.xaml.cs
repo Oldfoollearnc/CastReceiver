@@ -363,13 +363,13 @@ public partial class SettingsWindow : Window
         CmbIntroVideo.Items.Clear();
         foreach (IntroClips.Clip clip in IntroClips.BuiltIn) CmbIntroVideo.Items.Add(clip.Title);
         if (_introCustomPath.Length > 0) CmbIntroVideo.Items.Add(CustomItemLabel());
-        int browseIndex = CmbIntroVideo.Items.Add(IntroBrowseItem);
+        CmbIntroVideo.Items.Add(IntroBrowseItem);
 
-        // 选中的是哪一项
-        int selected = 0;
+        // 选中的是哪一项：现在没有内置素材了，列表里要么是"自己那个文件"，要么是"选择本地文件…"
+        int selected = -1;
         if (_introCustomPath.Length > 0)
         {
-            selected = browseIndex - 1;
+            selected = CmbIntroVideo.Items.Count - 2;
         }
         else if (!string.IsNullOrWhiteSpace(s.IntroSource))
         {
@@ -681,6 +681,31 @@ public partial class SettingsWindow : Window
         _introPlayWatch.Start();
     }
 
+    /// <summary>启动时入场画面就是主窗口那么大，所以预览画布也按主窗口的宽高比来。</summary>
+    private double RealIntroAspect()
+    {
+        try
+        {
+            var s = _host.Settings;
+            double w = s.WindowWidth is > 200 ? s.WindowWidth.Value : 1280;
+            double h = s.WindowHeight is > 150 ? s.WindowHeight.Value : 720;
+            return Math.Clamp(w / h, 1.0, 4.0);
+        }
+        catch { return 16.0 / 9.0; }
+    }
+
+    /// <summary>换素材：把小画面里的解码源换掉（先卸再装）。</summary>
+    private void ReloadIntroPreviewMedia()
+    {
+        try
+        {
+            UnloadIntroPreviewMedia();
+            _introVideoAspect = 0;
+            if (IsIntroPageVisible) LoadIntroPreviewMedia();
+        }
+        catch { }
+    }
+
     /// <summary>进开场页才装素材（几百 MB 的素材没必要一直挂在后台）。</summary>
     private void LoadIntroPreviewMedia()
     {
@@ -691,7 +716,11 @@ public partial class SettingsWindow : Window
             string path = IntroClips.ResolvePath(CurrentIntroSource(), AppContext.BaseDirectory);
             if (path.Length == 0 || !File.Exists(path))
             {
-                TxtIntroPreviewEmpty.Text = "这个素材找不到（可能被移动或删掉了）";
+                TxtIntroPreviewEmpty.Text = CurrentIntroSource().Length == 0
+                    ? "还没有素材：点下面的「选择本地文件…」挑一个视频"
+                    : "这个素材找不到（可能被移动或删掉了）";
+                TxtIntroPreviewEmpty.Visibility = Visibility.Visible;
+                BtnIntroPlay.IsEnabled = false;
                 return;
             }
 
@@ -717,6 +746,7 @@ public partial class SettingsWindow : Window
             IntroPreviewMedia.Source = new Uri(path);
             _introPreviewLoaded = true;
             TxtIntroPreviewEmpty.Visibility = Visibility.Collapsed;
+            BtnIntroPlay.IsEnabled = true;
             UpdateIntroPreviewLook();
         }
         catch { }
@@ -792,6 +822,14 @@ public partial class SettingsWindow : Window
     {
         try
         {
+            // 画布大小也跟着真实取景来：启动时入场窗就是主窗口那么大，所以按主窗口宽高比给高度。
+            double availW = IntroPreviewBox.ActualWidth - 2;
+            if (availW > 120)
+            {
+                double wantH = Math.Clamp(availW / RealIntroAspect(), 200, 470);
+                if (Math.Abs(IntroPreviewBox.Height - wantH) > 2) IntroPreviewBox.Height = wantH;
+            }
+
             if (!_introPreviewLoaded) return;
 
             string stretch = CurrentStretchTag();
@@ -810,8 +848,7 @@ public partial class SettingsWindow : Window
             IntroPreviewFit.HorizontalAlignment = alignH;
             IntroPreviewFit.VerticalAlignment = alignV;
 
-            double boxW = IntroPreviewBox.ActualWidth - 2, boxH = IntroPreviewBox.ActualHeight - 2;
-            if (boxW < 40 || boxH < 40) return;
+            double boxW = IntroPreviewBox.ActualWidth - 2, boxH = IntroPreviewBox.ActualHeight - 2;            if (boxW < 40 || boxH < 40) return;
 
             if (stretch == "fit" && _introVideoAspect > 0.05)
             {
@@ -1030,7 +1067,7 @@ public partial class SettingsWindow : Window
                 _suppressIntroVideoChange = true;
                 CmbIntroVideo.SelectedIndex = _introCustomPath.Length > 0
                     ? CmbIntroVideo.Items.Count - 2      // 原来那个自定义项
-                    : 0;
+                    : -1;                                 // 没选过就什么都不选（不再退回内置项）
                 _suppressIntroVideoChange = false;
                 return;
             }
@@ -1050,6 +1087,7 @@ public partial class SettingsWindow : Window
 
         RefreshIntroLength(resetEndToFullLength: true);
         SaveIntroSelection();
+        ReloadIntroPreviewMedia();       // 换素材要立刻换小画面（实测：不换的话上面还放着上一段）
     }
 
     /// <summary>把当前选择写进设置（视频来源 + 起止秒 + 延长秒）。</summary>
