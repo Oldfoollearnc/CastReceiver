@@ -1428,10 +1428,14 @@ public partial class MainWindow : Window
             // 以前这个 DispatcherTimer 从不 Stop，于是每 800ms 都会把 _introNative 抹成 false、
             // 顺手把控制条显示出来 —— 预览期间它会把预览状态一起冲掉（界面上就是"黑屏还在、
             // 巡检以为自己该去销毁它"）。实测日志：预览开始 4 秒后开始每 4 秒刷一条"发现残留的入场窗"。
-            var timer = new DispatcherTimer(TimeSpan.FromMilliseconds(800), DispatcherPriority.Normal, null!, Dispatcher);
-            timer.Tick += (_, _) =>
+            //
+            // 注意：DispatcherTimer 的构造函数会**校验 callback 非空**。早先这里为了"先建后挂 Tick"
+            // 传了 null!，结果启动时直接抛 ArgumentNullException（对话框：Value cannot be null.
+            // (Parameter 'callback')）—— 现在给它一个真实的处理器，在里面 Stop 自己。
+            DispatcherTimer? timer = null;
+            timer = new DispatcherTimer(TimeSpan.FromMilliseconds(800), DispatcherPriority.Normal, (_, _) =>
             {
-                timer.Stop();
+                timer?.Stop();
                 if (ReferenceEquals(_introHandoff, timer)) _introHandoff = null;
                 if (_introPreviewActive) return;      // 这期间是预览在做主，别去动它的状态
 
@@ -1439,7 +1443,7 @@ public partial class MainWindow : Window
                 ApplyStageVisibility();
                 if (_barPendingIntro) { _barPendingIntro = false; ShowBar(); }
                 if (_pendingTutorial) { _pendingTutorial = false; MaybeShowTutorial(); }
-            };
+            }, Dispatcher);
             _introHandoff = timer;
             timer.Start();
             return;
