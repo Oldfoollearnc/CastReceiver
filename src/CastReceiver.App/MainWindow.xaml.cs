@@ -1394,6 +1394,7 @@ public partial class MainWindow : Window
         _introActive = false;
         _introLeaving = false;
         _introWaiting = false;
+        BringToFrontAfterIntro();
 
         // 动画结束的这一刻，程序必须已经**完全就绪**：控制条补上、画面按状态恢复、
         // 不能有任何"正在准备/加载"的残留（用户明确要求）。
@@ -1447,6 +1448,7 @@ public partial class MainWindow : Window
                 ApplyStageVisibility();
                 if (_barPendingIntro) { _barPendingIntro = false; ShowBar(); }
                 if (_pendingTutorial) { _pendingTutorial = false; MaybeShowTutorial(); }
+                BringToFrontAfterIntro();      // 置顶的入场窗收场后，前台要显式还给主窗口
             }, Dispatcher);
             _introHandoff = timer;
             timer.Start();
@@ -1786,6 +1788,30 @@ public partial class MainWindow : Window
     }
 
     /// <summary>主窗口淡入（启动闪屏关闭后调用）。</summary>
+    /// <summary>
+    /// 把主窗口带回前台（入场动画收场后必须做）。
+    ///
+    /// 为什么：入场窗是一块 **WS_EX_TOPMOST 的原生窗**，它自己是前台窗口；
+    /// 它一销毁，Windows 并不会自动把前台交回我们的主窗口 —— 用户实测到的现象就是
+    /// "动画演完之后界面像被最小化了：任务栏有按钮，屏幕上却看不到窗口"。
+    /// 这里把状态归位 + 显式激活 + SetForegroundWindow，双保险。
+    /// </summary>
+    private void BringToFrontAfterIntro()
+    {
+        try
+        {
+            if (WindowState == WindowState.Minimized) WindowState = WindowState.Normal;
+            if (!IsVisible) Show();
+            Activate();
+            IntPtr handle = new System.Windows.Interop.WindowInteropHelper(this).Handle;
+            if (handle != IntPtr.Zero) SetForegroundWindow(handle);
+        }
+        catch { }
+    }
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern bool SetForegroundWindow(IntPtr hwnd);
+
     public void FadeInWindow()
     {
         try

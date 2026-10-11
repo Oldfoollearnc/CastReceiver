@@ -252,6 +252,34 @@ public sealed class CastSettings
     /// <summary>预览时是否像"重进一次"那样把界面藏起来（默认是）。</summary>
     public bool IntroPreviewReenter { get; set; } = true;
 
+    // ---------------- 裁掉画面自带的黑边 ----------------
+    //
+    // 很多动画/电影压制把 2.4:1 的画面塞进 16:9 的框里，上下是**录在像素里**的黑边：
+    // 这种情况"铺满"也甩不掉（铺满只管把整帧铺到窗口上）。下面的裁切比例由设置里的
+    // 「裁掉自带黑边」开关 + 一次离线检测得到，播放时按它放大，把黑边移出可视区。
+
+    /// <summary>是否裁掉画面自带的黑边（默认关）。</summary>
+    public bool IntroCropBars { get; set; }
+
+    /// <summary>上边黑边占整帧高度的比例（0～0.45）。</summary>
+    public double IntroCropTop { get; set; }
+
+    /// <summary>下边黑边占比。</summary>
+    public double IntroCropBottom { get; set; }
+
+    /// <summary>左边黑边占整帧宽度的比例。</summary>
+    public double IntroCropLeft { get; set; }
+
+    /// <summary>右边黑边占比。</summary>
+    public double IntroCropRight { get; set; }
+
+    /// <summary>真正生效的裁切比例（开关关掉时全是 0）。</summary>
+    public (double Top, double Bottom, double Left, double Right) IntroCropEffective =>
+        IntroCropBars
+            ? (Math.Clamp(IntroCropTop, 0, 0.45), Math.Clamp(IntroCropBottom, 0, 0.45),
+               Math.Clamp(IntroCropLeft, 0, 0.45), Math.Clamp(IntroCropRight, 0, 0.45))
+            : (0, 0, 0, 0);
+
     // ---------------- 安卓 adb 鼠标控制（⑧） ----------------
 
     /// <summary>用鼠标控制手机（点击→点按、滚轮/拖动→滑动）。默认关闭。</summary>

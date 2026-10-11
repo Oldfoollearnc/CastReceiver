@@ -182,6 +182,10 @@ internal sealed class NativeIntroWindow
     private double _expectedEnd = -1;      // 这段素材该放多久（含裁切），按秒表算，不依赖事件
     private double _lastPosition = -1;
     private double _hardDeadline = -1;     // 硬性期限（秒，相对秒表）：到点无条件收场
+    private int _frameW, _frameH;          // 编码尺寸（像素），算裁切几何要用
+    private bool _cropApplied;             // 已经切到"按裁切手动摆放"模式
+    private float _cropScale = 1f;         // 裁切后的基准缩放（进场/出场动画都乘以它）
+
     private int _stalledFor;
     private bool _closed;
     private readonly DateTime _startedAtUtc = DateTime.UtcNow;   // 这块画面什么时候起播的
@@ -243,7 +247,8 @@ internal sealed class NativeIntroWindow
     /// 返回 false 表示没能起来 —— 调用方回退到 WPF 内部的遮罩动画。
     /// </summary>
     /// <summary>入场画面的样式（都来自设置，用户要求"几乎什么都能编辑"）。</summary>
-    public sealed record Style(string Stretch, double AlignH, double AlignV, double Volume, int FadeInMs, int FadeOutMs, bool Flash);
+    public sealed record Style(string Stretch, double AlignH, double AlignV, double Volume, int FadeInMs, int FadeOutMs, bool Flash,
+        double CropTop = 0, double CropBottom = 0, double CropLeft = 0, double CropRight = 0);
 
     public static bool Start(string videoPath, double startSeconds, double endSeconds, double extendSeconds,
         int x, int y, int width, int height, Style? style = null)
@@ -520,8 +525,86 @@ internal sealed class NativeIntroWindow
             _surface = surface;
             try { old?.Dispose(); } catch { }
             Bootstrap.Log($"入场画面表面已对齐素材：{w}×{h}");
+
+            _frameW = w; _frameH = h;
+            ApplyCropGeometry();      // 画面自带黑边时按裁切放大（要等知道编码尺寸才能算）
         }
         catch (Exception ex) { Bootstrap.Log("对齐入场画面表面失败：" + ex.Message); }
+    }
+
+    /// <summary>
+    /// 按"裁掉自带黑边"的设置在合成层重排画面几何。
+    ///
+    /// 原理：把视觉的尺寸设成**编码尺寸**（1:1 摆放，Stretch=Fill），再以裁切区域为中心缩放、
+    /// 平移，让"裁切后的真实画面"正好铺满窗口 —— 那些录在像素里的黑边就被推到窗口外了。
+    /// 填充方式/裁切位置照旧生效：铺满取覆盖用的较大倍率、完整取较小倍率、拉伸两个方向各自拉。
+    /// </summary>
+    private void ApplyCropGeometry()
+    {
+        try
+        {
+            if (_visual is null || _frameW <= 0 || _frameH <= 0) return;
+
+            // 这个类是原生窗口：直接问窗口自己要客户区像素尺寸（不用 ActualWidth，也不用再乘 DPI）
+            if (_hwnd == IntPtr.Zero) return;
+            if (!GetClientRect(_hwnd, out Rect client)) return;
+            double winPxW = Math.Max(1, client.Right - client.Left);
+            double winPxH = Math.Max(1, client.Bottom - client.Top);
+
+            double cropL = Math.Clamp(_style.CropLeft, 0, 0.45), cropR = Math.Clamp(_style.CropRight, 0, 0.45);
+            double cropT = Math.Clamp(_style.CropTop, 0, 0.45), cropB = Math.Clamp(_style.CropBottom, 0, 0.45);
+            bool anyCrop = cropL + cropR + cropT + cropB > 0.004;
+            if (!anyCrop && !_cropApplied) return;          // 没裁切：维持原来那套（画刷铺满）
+
+            double cw = _frameW * (1 - cropL - cropR);
+            double ch = _frameH * (1 - cropT - cropB);
+            if (cw < 16 || ch < 16) return;
+            double cx = _frameW * (cropL + (1 - cropL - cropR) / 2);
+            double cy = _frameH * (cropT + (1 - cropT - cropB) / 2);
+
+            // 画面尺寸与窗口尺寸单位要一致：这里都在"像素"里算
+            double sx, sy;
+            switch ((_style.Stretch ?? "fill").ToLowerInvariant())
+            {
+                case "fit":
+                    sx = sy = Math.Min(winPxW / cw, winPxH / ch);
+                    break;
+                case "stretch":
+                    sx = winPxW / cw; sy = winPxH / ch;
+                    break;
+                default:                                     // fill：铺满（裁掉多余）
+                    sx = sy = Math.Max(winPxW / cw, winPxH / ch);
+                    break;
+            }
+
+            string mode = (_style.Stretch ?? "fill").ToLowerInvariant();
+            double scaledW = cw * sx, scaledH = ch * sy;
+            // 位置：按设置的裁切位置把"多出来/少掉的那部分"摆到相应边
+            double offX = (mode == "stretch" || mode == "fit" ? Math.Clamp(_style.AlignH, 0, 1) : Math.Clamp(_style.AlignH, 0, 1))
+                          * (winPxW - scaledW) + scaledW / 2 - cx;
+            double offY = Math.Clamp(_style.AlignV, 0, 1) * (winPxH - scaledH) + scaledH / 2 - cy;
+
+            if (_visual.Brush is CompositionSurfaceBrush brush) brush.Stretch = CompositionStretch.Fill;
+            _visual.RelativeSizeAdjustment = Vector2.Zero;
+            _visual.Size = new Vector2(_frameW, _frameH);
+            _visual.CenterPoint = new Vector3((float)cx, (float)cy, 0f);
+            _visual.Offset = new Vector3((float)offX, (float)offY, 0f);
+            _cropScale = (float)Math.Max(0.05, sx);
+            _visual.Scale = new Vector3(_cropScale, (float)Math.Max(0.05, sy), 1f);
+            _cropApplied = true;
+            Bootstrap.Log($"入场画面按裁切摆放：裁切后 {cw:0}×{ch:0}，缩放 {sx:0.###}/{sy:0.###}");
+
+            // 进场那套"从 1.16 收到 1.0"的动画此刻可能还在跑，会把裁切基准顶掉 —— 重新按基准收一次
+            if (_compositor is not null)
+            {
+                var settle = _compositor.CreateVector3KeyFrameAnimation();
+                settle.InsertKeyFrame(0.3f, new Vector3((float)(sx * 1.05), (float)(sy * 1.05), 1f));
+                settle.InsertKeyFrame(1f, new Vector3((float)sx, (float)sy, 1f));
+                settle.Duration = TimeSpan.FromMilliseconds(650);
+                _visual.StartAnimation("Scale", settle);
+            }
+        }
+        catch (Exception ex) { Bootstrap.Log("按裁切摆放入场画面失败：" + ex.Message); }
     }
     private IntPtr WindowProc(IntPtr hwnd, uint msg, IntPtr w, IntPtr l)
     {
@@ -859,7 +942,8 @@ internal sealed class NativeIntroWindow
             _visual.StartAnimation("Opacity", fade);
 
             var push = _compositor.CreateVector3KeyFrameAnimation();
-            push.InsertKeyFrame(1f, new Vector3(1.30f, 1.30f, 1f));
+            float basis = _cropApplied ? Math.Max(0.05f, _cropScale) : 1f;   // 裁切模式下基准不是 1
+            push.InsertKeyFrame(1f, new Vector3(1.30f * basis, 1.30f * basis, 1f));
             push.Duration = TimeSpan.FromMilliseconds(Math.Clamp(_style.FadeOutMs, 100, 5000));
             _visual.StartAnimation("Scale", push);
         }

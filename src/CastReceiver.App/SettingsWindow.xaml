@@ -522,6 +522,13 @@
                                             </StackPanel>
                                             <CheckBox x:Name="ChkIntroFlash" Content="出场白闪" Margin="0,12,0,0"
                                                       Click="IntroStyle_Changed" AutomationProperties.Name="出场白闪" />
+
+                                            <!-- 很多动画/电影把 2.4:1 的画面塞进 16:9 的框里，黑边是**录在像素里**的：
+                                                 铺满也甩不掉，只能按检测到的比例放大裁掉。 -->
+                                            <CheckBox x:Name="ChkIntroCropBars" Content="裁掉画面自带的黑边" Margin="0,12,0,0"
+                                                      Click="IntroCropBars_Click" AutomationProperties.Name="裁掉自带黑边" />
+                                            <TextBlock x:Name="TxtIntroCrop" Style="{DynamicResource S.Desc}" Margin="0,4,0,0"
+                                                       TextWrapping="Wrap" Text="勾上会解一帧检测黑边，按检测结果放大裁切（铺满才真的铺满）" />
                                         </StackPanel>
 
                                         <StackPanel Grid.Column="2">

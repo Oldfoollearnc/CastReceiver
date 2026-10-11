@@ -74,7 +74,9 @@ internal static class Program
             (int x, int y, int w, int h) = IntroWindowBounds(settings);
             var style = new NativeIntroWindow.Style(
                 settings.IntroStretch, settings.IntroAlignH, settings.IntroAlignV,
-                settings.IntroVolume, settings.IntroFadeInMs, settings.IntroFadeOutMs, settings.IntroFlash);
+                settings.IntroVolume, settings.IntroFadeInMs, settings.IntroFadeOutMs, settings.IntroFlash,
+                settings.IntroCropEffective.Top, settings.IntroCropEffective.Bottom,
+                settings.IntroCropEffective.Left, settings.IntroCropEffective.Right);
             bool ok = NativeIntroWindow.Start(video, settings.IntroStart, settings.IntroEnd, settings.IntroExtend, x, y, w, h, style);
             Bootstrap.Log(ok ? "入场动画已提前起播" : "入场动画未提前起播，回退到界面内遮罩");
         }

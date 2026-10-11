@@ -528,6 +528,11 @@ public partial class SettingsWindow : Window
         TxtIntroFade.Text = $"{SldIntroFadeIn.Value:0} / {SldIntroFadeOut.Value:0} ms";
         ChkIntroFlash.IsChecked = s.IntroFlash;
         ChkIntroReenter.IsChecked = s.IntroPreviewReenter;
+        ChkIntroCropBars.IsChecked = s.IntroCropBars;
+        TxtIntroCrop.Text = s.IntroCropBars
+            ? $"已按检测结果裁切（上 {s.IntroCropTop * 100:0.#}% / 下 {s.IntroCropBottom * 100:0.#}% / 左 {s.IntroCropLeft * 100:0.#}% / 右 {s.IntroCropRight * 100:0.#}%）"
+            : "勾上会解一帧检测黑边，按检测结果放大裁切（铺满才真的铺满）";
+        ApplyIntroCropToPreview();
         UpdateIntroPreviewLook();
     }
 
@@ -990,7 +995,9 @@ public partial class SettingsWindow : Window
             var s = _host.Settings;
             (int x, int y, int w, int h) = Program.IntroWindowBounds(s);
             var style = new NativeIntroWindow.Style(s.IntroStretch, s.IntroAlignH, s.IntroAlignV,
-                s.IntroVolume, s.IntroFadeInMs, s.IntroFadeOutMs, s.IntroFlash);
+                s.IntroVolume, s.IntroFadeInMs, s.IntroFadeOutMs, s.IntroFlash,
+                s.IntroCropEffective.Top, s.IntroCropEffective.Bottom,
+                s.IntroCropEffective.Left, s.IntroCropEffective.Right);
 
             // "等于重进一次"：把自己和主窗口都藏起来，让入场画面独占屏幕，播完再把界面放回来
             var main = Application.Current.MainWindow as MainWindow;
@@ -1049,6 +1056,93 @@ public partial class SettingsWindow : Window
 
     private bool _suppressIntroVideoChange;
 
+    /// <summary>
+    /// 「裁掉画面自带的黑边」：勾上先解一帧检测，再把比例写进设置。
+    /// 检测放在后台 STA 线程（要两三秒），完成后切回界面线程刷新。
+    /// </summary>
+    private void IntroCropBars_Click(object sender, RoutedEventArgs e)
+    {
+        if (!_loaded) return;
+        try
+        {
+            var s = _host.Settings;
+            s.IntroCropBars = ChkIntroCropBars.IsChecked == true;
+            if (!s.IntroCropBars)
+            {
+                s.Save();
+                TxtIntroCrop.Text = "已关闭：黑边会照原样播放";
+                ApplyIntroCropToPreview();
+                return;
+            }
+
+            string path = IntroClips.ResolvePath(CurrentIntroSource(), AppContext.BaseDirectory);
+            if (path.Length == 0)
+            {
+                TxtIntroCrop.Text = "先选一段素材，再勾这个";
+                ChkIntroCropBars.IsChecked = false;
+                s.IntroCropBars = false;
+                s.Save();
+                return;
+            }
+
+            TxtIntroCrop.Text = "正在检测画面黑边…（解一帧，约两三秒）";
+            double at = (SldIntroStart.Value + SldIntroEnd.Value) / 2;
+            CastReceiver.App.Interop.IntroBarDetector.DetectAsync(path, at, result => Dispatcher.BeginInvoke(new Action(() =>
+            {
+                try
+                {
+                    if (result is null)
+                    {
+                        TxtIntroCrop.Text = "检测失败（这个素材读不出画面），先按原样播放";
+                        ChkIntroCropBars.IsChecked = false;
+                        _host.Settings.IntroCropBars = false;
+                    }
+                    else if (!result.HasBars)
+                    {
+                        TxtIntroCrop.Text = "这段素材没有自带黑边，不用裁";
+                        ChkIntroCropBars.IsChecked = false;
+                        _host.Settings.IntroCropBars = false;
+                    }
+                    else
+                    {
+                        _host.Settings.IntroCropTop = result.Top;
+                        _host.Settings.IntroCropBottom = result.Bottom;
+                        _host.Settings.IntroCropLeft = result.Left;
+                        _host.Settings.IntroCropRight = result.Right;
+                        TxtIntroCrop.Text = result.Describe();
+                    }
+                    _host.Settings.Save();
+                    ApplyIntroCropToPreview();
+                }
+                catch { }
+            })));
+        }
+        catch { }
+    }
+
+    /// <summary>小画面跟着裁切走（按比例放大，黑边被放大到画布外）——所见即所得。</summary>
+    private void ApplyIntroCropToPreview()
+    {
+        try
+        {
+            var s = _host.Settings;
+            double top = 0, bottom = 0, left = 0, right = 0;
+            if (s.IntroCropBars) (top, bottom, left, right) = s.IntroCropEffective;
+
+            double sx = 1 / Math.Max(0.2, 1 - left - right);
+            double sy = 1 / Math.Max(0.2, 1 - top - bottom);
+            if (sx < 1.002 && sy < 1.002)
+            {
+                IntroPreviewMedia.RenderTransform = null;
+                return;
+            }
+
+            IntroPreviewMedia.RenderTransformOrigin = new System.Windows.Point(0.5, 0.5);
+            IntroPreviewMedia.RenderTransform = new System.Windows.Media.ScaleTransform(sx, sy);
+        }
+        catch { }
+    }
+
     private void IntroVideo_Changed(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
     {
         if (_suppressIntroVideoChange) return;
@@ -1088,6 +1182,12 @@ public partial class SettingsWindow : Window
         RefreshIntroLength(resetEndToFullLength: true);
         SaveIntroSelection();
         ReloadIntroPreviewMedia();       // 换素材要立刻换小画面（实测：不换的话上面还放着上一段）
+
+        // 裁切比例是跟着素材走的：换了素材就按新素材重测一次
+        if (_host.Settings.IntroCropBars && ChkIntroCropBars.IsChecked == true)
+        {
+            _ = Dispatcher.BeginInvoke(new Action(() => IntroCropBars_Click(this, new RoutedEventArgs())));
+        }
     }
 
     /// <summary>把当前选择写进设置（视频来源 + 起止秒 + 延长秒）。</summary>
