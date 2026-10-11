@@ -47,13 +47,13 @@
                 </Border>
 
                 <TextBlock FontSize="11.5" Foreground="{DynamicResource B.TextDim}" TextWrapping="Wrap" Margin="0,14,0,0" LineHeight="18"
-                           Text="平时什么都不用填：手机打开「设置 → 开发者选项 → 无线调试」，本程序会自动发现并连上（投屏后打开「鼠标控制」开关即可）。只有第一次在一台新手机上用时需要配对一次 —— 在手机上点「使用配对码配对设备」，把 6 位配对码填进下面（IP 与配对端口会自动填好）。需要 Android 11 及以上。" />
+                           Text="平时不用填：手机打开「开发者选项 → 无线调试」，程序会自动发现并连上。第一次在新手机上用时，点手机的「使用配对码配对设备」，把 6 位配对码填到下面（需要 Android 11+）。" />
 
                 <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
                     <Button x:Name="BtnAuto" Content="自动发现并连接" Style="{DynamicResource S.BtnPrimary}" Padding="16,7"
                             FontSize="12" Click="BtnAuto_Click" AutomationProperties.Name="自动发现并连接"
                             AutomationProperties.AutomationId="AdbAutoButton" />
-                    <Button x:Name="BtnDiscover" Content="只刷新发现结果" Style="{DynamicResource S.Btn}" Padding="12,7"
+                    <Button x:Name="BtnDiscover" Content="刷新发现" Style="{DynamicResource S.Btn}" Padding="12,7"
                             FontSize="12" Margin="10,0,0,0" Click="BtnDiscover_Click" AutomationProperties.Name="自动发现同网段手机"
                             AutomationProperties.AutomationId="AdbDiscoverButton" />
                     <Button x:Name="BtnDisconnect" Content="断开" Style="{DynamicResource S.Btn}" Padding="12,7"
@@ -61,7 +61,7 @@
                             AutomationProperties.AutomationId="AdbDisconnectButton" />
                 </StackPanel>
 
-                <TextBlock Text="首次配对（只做一次）" FontSize="11.5" Foreground="{DynamicResource B.TextFaint}" Margin="0,14,0,0" />
+                <TextBlock Text="首次配对" FontSize="11.5" Foreground="{DynamicResource B.TextFaint}" Margin="0,14,0,0" />
 
                 <Grid Margin="0,8,0,0">
                     <Grid.ColumnDefinitions>
@@ -70,12 +70,12 @@
                         <ColumnDefinition Width="120" />
                     </Grid.ColumnDefinitions>
                     <StackPanel Grid.Column="0">
-                        <TextBlock Text="手机 IP 地址（自动填）" FontSize="11.5" Foreground="{DynamicResource B.TextFaint}" />
+                        <TextBlock Text="手机 IP（自动填）" FontSize="11.5" Foreground="{DynamicResource B.TextFaint}" />
                         <TextBox x:Name="TxtHost" Margin="0,6,0,0" AutomationProperties.Name="手机 IP 地址"
                                  AutomationProperties.AutomationId="AdbHostInput" />
                     </StackPanel>
                     <StackPanel Grid.Column="2">
-                        <TextBlock Text="连接端口（自动填）" FontSize="11.5" Foreground="{DynamicResource B.TextFaint}" />
+                        <TextBlock Text="连接端口（自动）" FontSize="11.5" Foreground="{DynamicResource B.TextFaint}" />
                         <TextBox x:Name="TxtConnectPort" Margin="0,6,0,0" AutomationProperties.Name="连接端口"
                                  AutomationProperties.AutomationId="AdbConnectPortInput" />
                     </StackPanel>
@@ -88,12 +88,12 @@
                         <ColumnDefinition Width="*" />
                     </Grid.ColumnDefinitions>
                     <StackPanel Grid.Column="0">
-                        <TextBlock Text="配对端口（自动填）" FontSize="11.5" Foreground="{DynamicResource B.TextFaint}" />
+                        <TextBlock Text="配对端口（自动）" FontSize="11.5" Foreground="{DynamicResource B.TextFaint}" />
                         <TextBox x:Name="TxtPairPort" Margin="0,6,0,0" AutomationProperties.Name="配对端口"
                                  AutomationProperties.AutomationId="AdbPairPortInput" />
                     </StackPanel>
                     <StackPanel Grid.Column="2">
-                        <TextBlock Text="配对码（手机上显示的 6 位）" FontSize="11.5" Foreground="{DynamicResource B.TextFaint}" />
+                        <TextBlock Text="配对码（手机上的 6 位）" FontSize="11.5" Foreground="{DynamicResource B.TextFaint}" />
                         <TextBox x:Name="TxtPairCode" Margin="0,6,0,0" AutomationProperties.Name="配对码"
                                  AutomationProperties.AutomationId="AdbPairCodeInput" />
                     </StackPanel>
@@ -103,7 +103,7 @@
                     <Button x:Name="BtnPair" Content="配对并连接" Style="{DynamicResource S.BtnPrimary}" Padding="14,7"
                             FontSize="12" Click="BtnPair_Click" AutomationProperties.Name="配对并连接"
                             AutomationProperties.AutomationId="AdbPairButton" />
-                    <Button x:Name="BtnConnect" Content="仅用上面的端口连接" Style="{DynamicResource S.Btn}" Padding="12,7"
+                    <Button x:Name="BtnConnect" Content="连接" Style="{DynamicResource S.Btn}" Padding="12,7"
                             FontSize="12" Margin="10,0,0,0" Click="BtnConnect_Click" AutomationProperties.Name="连接"
                             AutomationProperties.AutomationId="AdbConnectButton" />
                     <Button x:Name="BtnDiagnose" Content="复制诊断信息" Style="{DynamicResource S.Btn}" Padding="12,7"

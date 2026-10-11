@@ -35,7 +35,7 @@
             <Border x:Name="Strip" Grid.Row="1" Height="0" ClipToBounds="True"
                     Background="{DynamicResource B.OverlayBg}"
                     BorderBrush="{DynamicResource B.Line}" BorderThickness="0,1,0,0">
-                <Grid Margin="8,0">
+                <Grid Margin="10,0">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="*" />
@@ -56,7 +56,7 @@
                     </StackPanel>
 
                     <TextBlock x:Name="TxtState" Grid.Column="1" VerticalAlignment="Center"
-                               HorizontalAlignment="Center" FontSize="11"
+                               HorizontalAlignment="Center" FontSize="11.5"
                                Foreground="{DynamicResource B.TextDim}" TextTrimming="CharacterEllipsis"
                                Text="小窗" />
 
@@ -65,7 +65,7 @@
                                 Width="32" Click="BtnHome_Click" ToolTip="回到主窗口"
                                 AutomationProperties.Name="回到主窗口" />
                         <Button x:Name="BtnClose" Style="{StaticResource S.BtnIcon}" Content="&#xE711;"
-                                Width="32" Click="BtnClose_Click" ToolTip="关闭小窗（回到主窗口）"
+                                Width="32" Click="BtnClose_Click" ToolTip="关闭小窗"
                                 AutomationProperties.Name="关闭小窗" />
                     </StackPanel>
                 </Grid>
