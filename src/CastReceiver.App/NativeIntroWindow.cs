@@ -243,8 +243,7 @@ internal sealed class NativeIntroWindow
     /// 返回 false 表示没能起来 —— 调用方回退到 WPF 内部的遮罩动画。
     /// </summary>
     /// <summary>入场画面的样式（都来自设置，用户要求"几乎什么都能编辑"）。</summary>
-    public sealed record Style(string Stretch, double AlignH, double AlignV, double Volume, int FadeInMs, int FadeOutMs, bool Flash,
-        string EnterEffect = "fade", string ExitEffect = "fade");
+    public sealed record Style(string Stretch, double AlignH, double AlignV, double Volume, int FadeInMs, int FadeOutMs, bool Flash);
 
     public static bool Start(string videoPath, double startSeconds, double endSeconds, double extendSeconds,
         int x, int y, int width, int height, Style? style = null)
@@ -464,60 +463,14 @@ internal sealed class NativeIntroWindow
         fadeIn.Duration = TimeSpan.FromMilliseconds(Math.Clamp(_style.FadeInMs, 80, 5000));
         _visual.StartAnimation("Opacity", fadeIn);
 
-        // 入场特效（设置 → 画面 → 特效）：
-        //   fade   淡入（配一点推近，"镜头进来"的感觉）
-        //   zoom   放大进入（从小放到满）
-        //   slam   白闪进入（闪一下 + 快速推近）
-        //   none   直接出现
-        double enterMs = Math.Clamp(_style.FadeInMs, 80, 5000);
-        switch ((_style.EnterEffect ?? "fade").ToLowerInvariant())
-        {
-            case "none":
-                _visual.StopAnimation("Opacity");
-                _visual.Opacity = 1;
-                break;
-
-            case "zoom":
-                _visual.Scale = new Vector3(0.86f, 0.86f, 1f);
-                _visual.CenterPoint = new Vector3(0.5f, 0.5f, 0f);   // 先按相对中心放大，出画后再按像素中心
-                {
-                    var grow = _compositor.CreateVector3KeyFrameAnimation();
-                    grow.InsertKeyFrame(1f, new Vector3(1f, 1f, 1f));
-                    grow.Duration = TimeSpan.FromMilliseconds(enterMs + 260);
-                    _visual.StartAnimation("Scale", grow);
-                }
-                break;
-
-            case "slam":
-                _visual.Scale = new Vector3(1.10f, 1.10f, 1f);
-                {
-                    var push = _compositor.CreateVector3KeyFrameAnimation();
-                    push.InsertKeyFrame(1f, new Vector3(1f, 1f, 1f));
-                    push.Duration = TimeSpan.FromMilliseconds(Math.Max(220, enterMs * 0.5));
-                    _visual.StartAnimation("Scale", push);
-                }
-                if (_flash is not null)
-                {
-                    var hit = _compositor.CreateScalarKeyFrameAnimation();
-                    hit.InsertKeyFrame(0f, 0.55f);
-                    hit.InsertKeyFrame(1f, 0f);
-                    hit.Duration = TimeSpan.FromMilliseconds(Math.Max(260, enterMs * 0.6));
-                    _flash.StartAnimation("Opacity", hit);
-                }
-                break;
-
-            default:   // fade
-                _visual.Scale = new Vector3(1.16f, 1.16f, 1f);
-                _visual.CenterPoint = new Vector3(0.5f, 0.5f, 0f);
-                {
-                    var settle = _compositor.CreateVector3KeyFrameAnimation();
-                    settle.InsertKeyFrame(1f, new Vector3(1f, 1f, 1f));
-                    settle.Duration = TimeSpan.FromMilliseconds(1600);
-                    settle.InsertKeyFrame(0.35f, new Vector3(1.05f, 1.05f, 1f));
-                    _visual.StartAnimation("Scale", settle);
-                }
-                break;
-        }
+        // 进场也带一点推近（从 1.16 落到 1.0），比纯淡入更有"镜头进来"的感觉
+        _visual.Scale = new Vector3(1.16f, 1.16f, 1f);
+        _visual.CenterPoint = new Vector3(0.5f, 0.5f, 0f);
+        var settle = _compositor.CreateVector3KeyFrameAnimation();
+        settle.InsertKeyFrame(1f, new Vector3(1f, 1f, 1f));
+        settle.Duration = TimeSpan.FromMilliseconds(1600);
+        settle.InsertKeyFrame(0.35f, new Vector3(1.05f, 1.05f, 1f));
+        _visual.StartAnimation("Scale", settle);
 
         _player.Source = MediaSource.CreateFromUri(new Uri(videoPath));
 
@@ -876,14 +829,11 @@ internal sealed class NativeIntroWindow
         if (_closing || _closed || _compositor is null || _visual is null) return;
         _closing = true;
 
-        string exit = (_style.ExitEffect ?? "fade").ToLowerInvariant();
-        double outMs = Math.Clamp(_style.FadeOutMs, 100, 5000);
-
         try
         {
             // 转场三部曲（用户要"更明显的转场"）：
             // ① 先打一下白闪（90ms 升到 22%，再 320ms 退掉）——像镜头切换时的一下曝光
-            // ② 画面推近或缩小并淡出（按设置里的出场特效）
+            // ② 画面本身明显推近（1.0 → 1.30）并淡出，比原来 1.10 强得多
             // ③ 主窗口在这期间淡入（由 MainWindow 那边配合），形成交叉溶解
             // 淡出这期间就让它"点击穿透"：万一后面销毁失败，也绝不会挡住你点界面
             try
@@ -893,8 +843,7 @@ internal sealed class NativeIntroWindow
             }
             catch { }
 
-            bool wantFlash = _style.Flash || exit == "flash";
-            if (_flash is not null && wantFlash)
+            if (_flash is not null && _style.Flash)
             {
                 var flash = _compositor.CreateScalarKeyFrameAnimation();
                 flash.InsertKeyFrame(0.22f, 0.22f);
@@ -903,30 +852,19 @@ internal sealed class NativeIntroWindow
                 _flash.StartAnimation("Opacity", flash);
             }
 
-            if (exit == "none")
-            {
-                double keep = 1;
-                try { keep = _visual.Opacity; } catch { }
-                _visual.Opacity = 0;
-                outMs = 0;                       // 直接消失：立刻收场
-            }
-            else
-            {
-                var fade = _compositor.CreateScalarKeyFrameAnimation();
-                fade.InsertKeyFrame(0f, 1f);
-                fade.InsertKeyFrame(1f, 0f);
-                fade.Duration = TimeSpan.FromMilliseconds(outMs);
-                _visual.StartAnimation("Opacity", fade);
+            var fade = _compositor.CreateScalarKeyFrameAnimation();
+            fade.InsertKeyFrame(0f, 1f);
+            fade.InsertKeyFrame(1f, 0f);
+            fade.Duration = TimeSpan.FromMilliseconds(Math.Clamp(_style.FadeOutMs, 100, 5000));
+            _visual.StartAnimation("Opacity", fade);
 
-                var move = _compositor.CreateVector3KeyFrameAnimation();
-                float to = exit == "shrink" ? 0.82f : 1.30f;      // shrink＝缩小消失；其余＝推近
-                move.InsertKeyFrame(1f, new Vector3(to, to, 1f));
-                move.Duration = TimeSpan.FromMilliseconds(outMs);
-                _visual.StartAnimation("Scale", move);
-            }
+            var push = _compositor.CreateVector3KeyFrameAnimation();
+            push.InsertKeyFrame(1f, new Vector3(1.30f, 1.30f, 1f));
+            push.Duration = TimeSpan.FromMilliseconds(Math.Clamp(_style.FadeOutMs, 100, 5000));
+            _visual.StartAnimation("Scale", push);
         }
         catch { }
 
-        SetTimer(_hwnd, TimerClose, (uint)Math.Clamp(outMs + 40, 60, 5200), IntPtr.Zero);
+        SetTimer(_hwnd, TimerClose, (uint)Math.Clamp(_style.FadeOutMs + 40, 200, 5200), IntPtr.Zero);
     }
 }

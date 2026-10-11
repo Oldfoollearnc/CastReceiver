@@ -468,42 +468,14 @@ public partial class SettingsWindow : Window
             s.IntroFadeOutMs = (int)Math.Clamp(SldIntroFadeOut.Value, 100, 5000);
             s.IntroFlash = ChkIntroFlash.IsChecked == true;
             s.IntroPreviewReenter = ChkIntroReenter.IsChecked == true;
-            s.IntroEnterEffect = CurrentEffectTag(SegEnterFade, SegEnterZoom, SegEnterSlam, SegEnterNone, "fade");
-            s.IntroExitEffect = CurrentEffectTag(SegExitFade, SegExitShrink, SegExitFlash, SegExitNone, "fade");
-            s.CastStopEffect = CurrentEffectTag(SegStopShrink, SegStopFade, SegStopNone, null, "shrink");
-            s.CastStopEffectMs = (int)Math.Clamp(SldStopEffectMs.Value, 200, 1600);
             s.Save();
 
             TxtIntroVolume.Text = $"{s.IntroVolume * 100:0}%";
             TxtIntroFade.Text = $"{s.IntroFadeInMs} / {s.IntroFadeOutMs} ms";
-            TxtStopEffectMs.Text = $"{s.CastStopEffectMs} ms";
             IntroSizeRow.Visibility = customSize ? Visibility.Visible : Visibility.Collapsed;
             UpdateIntroPreviewLook();
         }
         catch { }
-    }
-
-    /// <summary>特效那几组单选里当前选中的 Tag（一个都没选就给 fallback）。</summary>
-    private static string CurrentEffectTag(System.Windows.Controls.RadioButton a, System.Windows.Controls.RadioButton b,
-        System.Windows.Controls.RadioButton c, System.Windows.Controls.RadioButton? d, string fallback)
-    {
-        foreach (System.Windows.Controls.RadioButton? button in new[] { a, b, c, d })
-        {
-            if (button is not null && button.IsChecked == true && button.Tag is string tag && tag.Length > 0) return tag;
-        }
-        return fallback;
-    }
-
-    /// <summary>按 Tag 选中特效那组单选。</summary>
-    private static void SelectEffect(System.Windows.Controls.RadioButton a, System.Windows.Controls.RadioButton b,
-        System.Windows.Controls.RadioButton c, System.Windows.Controls.RadioButton? d, string? tag, string fallback)
-    {
-        string want = string.IsNullOrWhiteSpace(tag) ? fallback : tag!.ToLowerInvariant();
-        foreach (System.Windows.Controls.RadioButton? button in new[] { a, b, c, d })
-        {
-            if (button is not null && (button.Tag as string) == want) { button.IsChecked = true; return; }
-        }
-        a.IsChecked = true;
     }
 
     /// <summary>填充方式：铺满 / 完整 / 拉伸。</summary>
@@ -556,13 +528,6 @@ public partial class SettingsWindow : Window
         TxtIntroFade.Text = $"{SldIntroFadeIn.Value:0} / {SldIntroFadeOut.Value:0} ms";
         ChkIntroFlash.IsChecked = s.IntroFlash;
         ChkIntroReenter.IsChecked = s.IntroPreviewReenter;
-
-        SelectEffect(SegEnterFade, SegEnterZoom, SegEnterSlam, SegEnterNone, s.IntroEnterEffect, "fade");
-        SelectEffect(SegExitFade, SegExitShrink, SegExitFlash, SegExitNone, s.IntroExitEffect, "fade");
-        SelectEffect(SegStopShrink, SegStopFade, SegStopNone, null, s.CastStopEffect, "shrink");
-        SldStopEffectMs.Value = Math.Clamp(s.CastStopEffectMs > 0 ? s.CastStopEffectMs : 620, 200, 1600);
-        TxtStopEffectMs.Text = $"{SldStopEffectMs.Value:0} ms";
-
         UpdateIntroPreviewLook();
     }
 
@@ -1025,8 +990,7 @@ public partial class SettingsWindow : Window
             var s = _host.Settings;
             (int x, int y, int w, int h) = Program.IntroWindowBounds(s);
             var style = new NativeIntroWindow.Style(s.IntroStretch, s.IntroAlignH, s.IntroAlignV,
-                s.IntroVolume, s.IntroFadeInMs, s.IntroFadeOutMs, s.IntroFlash,
-                s.IntroEnterEffect, s.IntroExitEffect);
+                s.IntroVolume, s.IntroFadeInMs, s.IntroFadeOutMs, s.IntroFlash);
 
             // "等于重进一次"：把自己和主窗口都藏起来，让入场画面独占屏幕，播完再把界面放回来
             var main = Application.Current.MainWindow as MainWindow;
