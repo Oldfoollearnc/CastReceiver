@@ -9,8 +9,8 @@
             CornerRadius="16" Padding="24,20">
         <StackPanel>
             <Grid MouseLeftButtonDown="OnDrag" Background="Transparent">
-                <TextBlock Text="连接诊断" FontSize="16" FontWeight="SemiBold" />
-                <TextBlock Text="可拖动此区域移动窗口" FontSize="11" Foreground="{DynamicResource B.TextFaint}"
+                <TextBlock Text="连接诊断" Style="{DynamicResource S.H1}" />
+                <TextBlock Text="拖动可移动窗口" FontSize="11" Foreground="{DynamicResource B.TextFaint}"
                            HorizontalAlignment="Right" VerticalAlignment="Center" />
             </Grid>
             <TextBlock x:Name="TxtProgress" FontSize="11.5" Foreground="{DynamicResource B.TextFaint}" Margin="0,6,0,0" Text="准备中…" />
