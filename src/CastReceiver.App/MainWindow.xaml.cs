@@ -1165,8 +1165,12 @@ public partial class MainWindow : Window
     {
         try
         {
-            if (_introNative || _introPreviewActive || !NativeIntroWindow.IsPlaying) return;
-            _host.Log.Warn("startup", "发现残留的入场窗（界面已恢复），强制销毁");
+            if (!NativeIntroWindow.IsPlaying) return;
+            if (_introNative || _introPreviewActive) return;   // 界面还在等它 / 预览在做主：不插手
+            // 只处理"真卡住"的窗：正常播放期间界面早已就绪，那会儿掐掉它 =
+            // 用户看到的"启动动画放到一半突然没了"（实测踩过，见 Invoke-StartupCheck.ps1）
+            if (!NativeIntroWindow.IsStuck) return;
+            _host.Log.Warn("startup", "入场窗卡住没收场（界面已恢复），强制销毁");
             NativeIntroWindow.ForceClose();
         }
         catch { }

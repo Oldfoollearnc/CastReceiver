@@ -36,8 +36,8 @@
 
 设计语言：**中性近黑 / 冷调米白两套、零渐变**，层级靠"面"的明度差与留白，只有黑白灰加一个强调色；
 主界面只留「画面 + 状态 + 动作」，设置/自检/日志挪进独立窗口。
-截图都在 `docs/`：`ui-main.png`、`ui-dark.png`、`settings-general.png`、`theme-light-visual.png`、
-`ui-bar.png`（悬浮控制条）、`ui-mini.png`（小窗）、
+截图都在 `docs/`：`ui-main.png`、`ui-dark.png`、`settings-general.png`、`settings-intro.png`（开场编辑器）、
+`theme-light-visual.png`、`ui-bar.png`（悬浮控制条）、`ui-mini.png`（小窗）、
 加密库三扇窗 `vault-setup.png` / `vault-unlock.png` / `vault-window.png`。
 
 ```

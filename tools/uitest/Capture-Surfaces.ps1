@@ -119,7 +119,7 @@ if ($open) {
     $open.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
     Start-Sleep -Seconds 3
     $settings = [Cap]::Find($p.Id, "设置")
-    foreach ($page in @("通用", "画面", "网络", "安全", "诊断", "关于")) {
+    foreach ($page in @("通用", "画面", "开场", "网络", "安全", "诊断", "关于")) {
         $nav = Find-El $p.Id $page ([System.Windows.Automation.ControlType]::RadioButton)
         if ($nav) {
             $nav.GetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern).Select()

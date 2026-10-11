@@ -207,8 +207,8 @@ if (-not (Invoke-Element $openSettings "打开设置")) {
     exit 1
 }
 
-$navVisual = Wait-Element $p.Id "" "画面" ([System.Windows.Automation.ControlType]::RadioButton) 20
-if (-not (Invoke-Element $navVisual "设置 → 画面")) {
+$navVisual = Wait-Element $p.Id "" "开场" ([System.Windows.Automation.ControlType]::RadioButton) 20
+if (-not (Invoke-Element $navVisual "设置 → 开场")) {
     Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
     exit 1
 }

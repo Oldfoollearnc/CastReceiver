@@ -238,6 +238,7 @@ public partial class SettingsWindow : Window
         ShowPage(rb.Name switch
         {
             "NavVisual" => "visual",
+            "NavIntro" => "intro",
             "NavNetwork" => "network",
             "NavSecurity" => "security",
             "NavDiag" => "diag",
@@ -250,12 +251,16 @@ public partial class SettingsWindow : Window
     {
         PageGeneral.Visibility = page == "general" ? Visibility.Visible : Visibility.Collapsed;
         PageVisual.Visibility = page == "visual" ? Visibility.Visible : Visibility.Collapsed;
+        PageIntro.Visibility = page == "intro" ? Visibility.Visible : Visibility.Collapsed;
         PageNetwork.Visibility = page == "network" ? Visibility.Visible : Visibility.Collapsed;
         PageSecurity.Visibility = page == "security" ? Visibility.Visible : Visibility.Collapsed;
         PageDiag.Visibility = page == "diag" ? Visibility.Visible : Visibility.Collapsed;
         PageAbout.Visibility = page == "about" ? Visibility.Visible : Visibility.Collapsed;
         if (page == "network") RefreshNetworkText();
         if (page == "security") { RefreshVaultState(); RefreshCheckup(); }
+        // 小画面里的素材只在开场页挂着：几百 MB 的 4K 文件没必要一直占着解码器
+        if (page == "intro") LoadIntroPreviewMedia();
+        else UnloadIntroPreviewMedia();
     }
 
     // ------------------------------------------------------------------ 安全页
@@ -330,6 +335,22 @@ public partial class SettingsWindow : Window
     /// <summary>用户在"选择本地文件…"里挑的那个文件（设置里存成 file:完整路径）。</summary>
     private string _introCustomPath = "";
 
+    /// <summary>初始化/换素材时是程序自己在改控件值，别当成用户操作写回设置。</summary>
+    private bool _suppressIntroUi;
+
+    /// <summary>左边小画面里的实时预览（进开场页才装素材，离开就卸掉）。</summary>
+    private bool _introPreviewLoaded;
+    private bool _introPreviewHooked;
+    private bool _introPlaying;
+    private double _introVideoAspect;
+    private System.Windows.Threading.DispatcherTimer? _introSeekTimer;   // 把连续拖动合并成一次 seek
+    private double _introSeekTarget;
+    private System.Windows.Threading.DispatcherTimer? _introPlayWatch;   // 播到"终点"就停
+    private System.Windows.Threading.DispatcherTimer? _introFrameTimer;  // 停住时把当前帧画出来
+
+    /// <summary>开场页现在是不是露着的（其它地方据此决定要不要让小画面继续放）。</summary>
+    public bool IsIntroPageVisible => PageIntro.Visibility == Visibility.Visible;
+
     /// <summary>"选择本地文件…"那一项在列表里的位置（选中它就弹文件对话框）。</summary>
     private const string IntroBrowseItem = "选择本地文件…";
 
@@ -361,11 +382,15 @@ public partial class SettingsWindow : Window
         CmbIntroVideo.SelectedIndex = selected;
         _suppressIntroVideoChange = false;
 
-        TxtIntroStart.Text = s.IntroStart > 0.05 ? s.IntroStart.ToString("0.#") : "0";
-        TxtIntroEnd.Text = s.IntroEnd > 0.05 ? s.IntroEnd.ToString("0.#") : "0";
-        TxtIntroExtend.Text = s.IntroExtend > 0.05 ? s.IntroExtend.ToString("0.#") : "0";
+        _suppressIntroUi = true;
+        SldIntroStart.Value = Math.Max(0, s.IntroStart);
+        SldIntroEnd.Value = s.IntroEnd > 0.05 ? s.IntroEnd : 12;
+        SldIntroExtend.Value = Math.Max(0, s.IntroExtend);
+        TxtIntroExtendValue.Text = $"{SldIntroExtend.Value:0.#} 秒";
         LoadIntroStyle(s);
         RefreshIntroLength();
+        UpdateIntroRangeText();
+        _suppressIntroUi = false;
     }
 
     /// <summary>
@@ -379,26 +404,39 @@ public partial class SettingsWindow : Window
             string path = source.Length > 0 ? IntroClips.ResolvePath(source, AppContext.BaseDirectory) : "";
             double? seconds = path.Length > 0 ? Mp4Probe.TryGetDurationSeconds(path) : null;
 
-            if (seconds is null)
+            bool wasSuppressed = _suppressIntroUi;
+            _suppressIntroUi = true;
+            try
             {
-                TxtIntroLength.Text = "素材时长未知";
-                TxtIntroHint.Text = "读不出这个文件的时长（可能不是 MP4/MOV），结束秒请自己填";
-                return;
-            }
+                if (seconds is null)
+                {
+                    TxtIntroLength.Text = "读不出这个文件的时长（可能不是 MP4/MOV）";
+                    TxtIntroRange.Text = "—";
+                    TxtIntroChip.Text = "素材时长未知";
+                    return;
+                }
 
-            TxtIntroLength.Text = $"素材共 {seconds.Value:0.#} 秒";
-            TxtIntroHint.Text = "预览会立刻按当前设置播一遍（不用重启）";
+                double total = Math.Max(1, Math.Round(seconds.Value, 1));
+                SldIntroStart.Maximum = Math.Max(0.5, total - 0.5);
+                SldIntroEnd.Maximum = total;
 
-            if (resetEndToFullLength || TxtIntroEnd.Text.Trim() is "" or "0")
-            {
-                TxtIntroEnd.Text = seconds.Value.ToString("0.#");   // 换素材就按新素材的整段时长来
+                if (resetEndToFullLength || SldIntroEnd.Value <= 0.05) SldIntroEnd.Value = total;
+                else if (SldIntroEnd.Value > total + 0.2) SldIntroEnd.Value = total;
+                if (SldIntroStart.Value > SldIntroEnd.Value - 0.5) SldIntroStart.Value = Math.Max(0, SldIntroEnd.Value - 0.5);
+
+                TxtIntroLength.Text = $"素材共 {total:0.#} 秒";
             }
-            else if (double.TryParse(TxtIntroEnd.Text.Trim(), out double end) && end > seconds.Value + 0.2)
-            {
-                TxtIntroEnd.Text = seconds.Value.ToString("0.#");     // 填超了纠回来
-            }
+            finally { _suppressIntroUi = wasSuppressed; }
         }
         catch { }
+    }
+
+    /// <summary>把"起点 → 终点 / 共几秒"这几个读数刷新一遍。</summary>
+    private void UpdateIntroRangeText()
+    {
+        double start = SldIntroStart.Value, end = SldIntroEnd.Value;
+        TxtIntroRange.Text = $"{start:0.#} → {end:0.#}";
+        TxtIntroChip.Text = $"{start:0.#}s → {end:0.#}s · 共 {Math.Max(0, end - start):0.#}s";
     }
 
     /// <summary>画面样式改动：立刻写进设置并显示（预览就能看到效果）。</summary>
@@ -414,75 +452,382 @@ public partial class SettingsWindow : Window
         SaveIntroStyle();
     }
 
-    /// <summary>把画面相关的可编辑项写进设置。</summary>
-    /// <summary>把"跟随窗口"这类文字解析成 0（＝跟随）。</summary>
-    private static double ParseSecondsOrFollow(string? text)
-        => double.TryParse((text ?? "").Trim().TrimEnd('秒', ' '), out double value) ? value : 0;
-
+    /// <summary>把画面相关的可编辑项写进设置（都是即时生效的，没有"保存"按钮）。</summary>
     private void SaveIntroStyle()
     {
         try
         {
             var s = _host.Settings;
-            s.IntroWidth = (int)ParseSecondsOrFollow(TxtIntroWidth.Text);
-            s.IntroHeight = (int)ParseSecondsOrFollow(TxtIntroHeight.Text);
-            s.IntroStretch = (CmbIntroStretch.SelectedItem as System.Windows.Controls.ComboBoxItem)?.Tag as string ?? "fill";
-            s.IntroAlignH = ParseTaggedNumber(CmbIntroAlignH, 0.5);
-            s.IntroAlignV = ParseTaggedNumber(CmbIntroAlignV, 0.5);
+            bool customSize = ChkIntroCustomSize.IsChecked == true;
+            s.IntroWidth = customSize ? (int)Math.Max(0, ParseSeconds(TxtIntroWidth.Text)) : 0;
+            s.IntroHeight = customSize ? (int)Math.Max(0, ParseSeconds(TxtIntroHeight.Text)) : 0;
+            s.IntroStretch = CurrentStretchTag();
+            (s.IntroAlignH, s.IntroAlignV) = CurrentAlignTag();
             s.IntroVolume = Math.Clamp(SldIntroVolume.Value / 100.0, 0, 1);
-            s.IntroFadeInMs = (int)Math.Clamp(ParseSeconds(TxtIntroFadeIn.Text), 80, 5000);
-            s.IntroFadeOutMs = (int)Math.Clamp(ParseSeconds(TxtIntroFadeOut.Text), 100, 5000);
+            s.IntroFadeInMs = (int)Math.Clamp(SldIntroFadeIn.Value, 80, 5000);
+            s.IntroFadeOutMs = (int)Math.Clamp(SldIntroFadeOut.Value, 100, 5000);
             s.IntroFlash = ChkIntroFlash.IsChecked == true;
             s.IntroPreviewReenter = ChkIntroReenter.IsChecked == true;
             s.Save();
 
             TxtIntroVolume.Text = $"{s.IntroVolume * 100:0}%";
+            TxtIntroFade.Text = $"{s.IntroFadeInMs} / {s.IntroFadeOutMs} ms";
+            IntroSizeRow.Visibility = customSize ? Visibility.Visible : Visibility.Collapsed;
+            UpdateIntroPreviewLook();
         }
         catch { }
     }
 
-    private static double ParseTaggedNumber(System.Windows.Controls.ComboBox box, double fallback)
+    /// <summary>填充方式：铺满 / 完整 / 拉伸。</summary>
+    private string CurrentStretchTag()
     {
-        try
+        if (SegIntroFit.IsChecked == true) return "fit";
+        if (SegIntroStretch.IsChecked == true) return "stretch";
+        return "fill";
+    }
+
+    /// <summary>九宫格选中的对齐位置。</summary>
+    private (double H, double V) CurrentAlignTag()
+    {
+        foreach (System.Windows.Controls.RadioButton button in IntroPosButtons())
         {
-            if (box.SelectedItem is System.Windows.Controls.ComboBoxItem item && item.Tag is string tag &&
-                double.TryParse(tag, out double value))
+            if (button.IsChecked == true && button.Tag is string tag)
             {
-                return value;
+                string[] parts = tag.Split(',');
+                if (parts.Length == 2 && double.TryParse(parts[0], out double h) && double.TryParse(parts[1], out double v))
+                {
+                    return (h, v);
+                }
             }
         }
-        catch { }
-        return fallback;
+        return (0.5, 0.5);
     }
+
+    private System.Collections.Generic.List<System.Windows.Controls.RadioButton> IntroPosButtons() => new()
+    {
+        PosIntro0, PosIntro1, PosIntro2, PosIntro3, PosIntro4, PosIntro5, PosIntro6, PosIntro7, PosIntro8,
+    };
 
     private void LoadIntroStyle(CastSettings s)
     {
-        // 用"跟随窗口"这样的可读文字，而不是一串 0（用户反馈：看起来像空的、不知道该填什么）
-        TxtIntroWidth.Text = s.IntroWidth > 200 ? s.IntroWidth.ToString() : "跟随窗口";
-        TxtIntroHeight.Text = s.IntroHeight > 150 ? s.IntroHeight.ToString() : "跟随窗口";
-        SelectByTag(CmbIntroStretch, s.IntroStretch);
-        SelectByTag(CmbIntroAlignH, s.IntroAlignH.ToString("0.##"));
-        SelectByTag(CmbIntroAlignV, s.IntroAlignV.ToString("0.##"));
+        bool customSize = s.IntroWidth > 200 || s.IntroHeight > 150;
+        ChkIntroCustomSize.IsChecked = customSize;
+        TxtIntroWidth.Text = s.IntroWidth > 200 ? s.IntroWidth.ToString() : "";
+        TxtIntroHeight.Text = s.IntroHeight > 150 ? s.IntroHeight.ToString() : "";
+        IntroSizeRow.Visibility = customSize ? Visibility.Visible : Visibility.Collapsed;
+
+        SegIntroFill.IsChecked = s.IntroStretch is not ("fit" or "stretch");
+        SegIntroFit.IsChecked = string.Equals(s.IntroStretch, "fit", StringComparison.OrdinalIgnoreCase);
+        SegIntroStretch.IsChecked = string.Equals(s.IntroStretch, "stretch", StringComparison.OrdinalIgnoreCase);
+        SelectIntroPos(s.IntroAlignH, s.IntroAlignV);
+
         SldIntroVolume.Value = Math.Clamp(s.IntroVolume, 0, 1) * 100;
         TxtIntroVolume.Text = $"{Math.Clamp(s.IntroVolume, 0, 1) * 100:0}%";
-        TxtIntroFadeIn.Text = s.IntroFadeInMs > 0 ? s.IntroFadeInMs.ToString() : "760";
-        TxtIntroFadeOut.Text = s.IntroFadeOutMs > 0 ? s.IntroFadeOutMs.ToString() : "880";
+        SldIntroFadeIn.Value = Math.Clamp(s.IntroFadeInMs > 0 ? s.IntroFadeInMs : 760, 80, 3000);
+        SldIntroFadeOut.Value = Math.Clamp(s.IntroFadeOutMs > 0 ? s.IntroFadeOutMs : 880, 100, 3000);
+        TxtIntroFade.Text = $"{SldIntroFadeIn.Value:0} / {SldIntroFadeOut.Value:0} ms";
         ChkIntroFlash.IsChecked = s.IntroFlash;
         ChkIntroReenter.IsChecked = s.IntroPreviewReenter;
+        UpdateIntroPreviewLook();
     }
 
-    private static void SelectByTag(System.Windows.Controls.ComboBox box, string tag)
+    private void SelectIntroPos(double h, double v)
     {
-        foreach (object item in box.Items)
+        foreach (System.Windows.Controls.RadioButton button in IntroPosButtons())
         {
-            if (item is System.Windows.Controls.ComboBoxItem candidate && (candidate.Tag as string) == tag)
+            if (button.Tag is string tag)
             {
-                box.SelectedItem = candidate;
-                return;
+                string[] parts = tag.Split(',');
+                if (parts.Length == 2 && double.TryParse(parts[0], out double ph) && double.TryParse(parts[1], out double pv) &&
+                    Math.Abs(ph - h) < 0.01 && Math.Abs(pv - v) < 0.01)
+                {
+                    button.IsChecked = true;
+                    return;
+                }
             }
         }
+        PosIntro4.IsChecked = true;
+    }
 
-        box.SelectedIndex = 0;
+    // ------------------------------------------------------------------ 开场页：实时小画面
+
+    /// <summary>只写"片段"那三个值（换素材时不要去动下拉选择）。</summary>
+    private void SaveIntroSelectionQuiet()
+    {
+        try
+        {
+            var s = _host.Settings;
+            s.IntroStart = Math.Round(SldIntroStart.Value, 2);
+            s.IntroEnd = Math.Round(SldIntroEnd.Value, 2);
+            s.IntroExtend = Math.Round(SldIntroExtend.Value, 2);
+            SaveIntroStyle();
+        }
+        catch { }
+    }
+
+    private void SldIntroStart_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (!_loaded || _suppressIntroUi) return;
+        if (SldIntroStart.Value > SldIntroEnd.Value - 0.5)
+        {
+            _suppressIntroUi = true;
+            SldIntroStart.Value = Math.Max(0, SldIntroEnd.Value - 0.5);
+            _suppressIntroUi = false;
+        }
+        UpdateIntroRangeText();
+        SaveIntroSelectionQuiet();
+        QueueIntroSeek(SldIntroStart.Value);
+    }
+
+    private void SldIntroEnd_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (!_loaded || _suppressIntroUi) return;
+        if (SldIntroEnd.Value < SldIntroStart.Value + 0.5)
+        {
+            _suppressIntroUi = true;
+            SldIntroEnd.Value = Math.Min(SldIntroEnd.Maximum, SldIntroStart.Value + 0.5);
+            _suppressIntroUi = false;
+        }
+        UpdateIntroRangeText();
+        SaveIntroSelectionQuiet();
+        QueueIntroSeek(Math.Max(0, SldIntroEnd.Value - 0.3));
+    }
+
+    private void SldIntroExtend_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (!_loaded || _suppressIntroUi) return;
+        TxtIntroExtendValue.Text = $"{SldIntroExtend.Value:0.#} 秒";
+        SaveIntroSelectionQuiet();
+    }
+
+    private void IntroFade_Changed(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (!_loaded || _suppressIntroUi) return;
+        SaveIntroStyle();
+    }
+
+    private void IntroStretch_Checked(object sender, RoutedEventArgs e)
+    {
+        if (!_loaded || _suppressIntroUi) return;
+        SaveIntroStyle();
+    }
+
+    private void IntroPos_Checked(object sender, RoutedEventArgs e)
+    {
+        if (!_loaded || _suppressIntroUi) return;
+        SaveIntroStyle();
+    }
+
+    private void BtnIntroMore_Click(object sender, RoutedEventArgs e)
+    {
+        bool show = IntroMorePanel.Visibility != Visibility.Visible;
+        IntroMorePanel.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+        BtnIntroMore.Content = show ? "收起更多设置" : "更多设置";
+    }
+
+    private void BtnIntroPlay_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            if (!_introPreviewLoaded)
+            {
+                LoadIntroPreviewMedia();
+                if (!_introPreviewLoaded) return;
+            }
+
+            if (_introPlaying)
+            {
+                IntroPreviewMedia.Pause();
+                _introPlaying = false;
+                _introPlayWatch?.Stop();
+                BtnIntroPlay.Content = "\uE768";
+                return;
+            }
+
+            IntroPreviewMedia.Volume = Math.Clamp(_host.Settings.IntroVolume, 0, 1);
+            double start = SldIntroStart.Value;
+            if (IntroPreviewMedia.Position.TotalSeconds < start - 0.4 ||
+                IntroPreviewMedia.Position.TotalSeconds > SldIntroEnd.Value)
+            {
+                IntroPreviewMedia.Position = TimeSpan.FromSeconds(Math.Max(0, start));
+            }
+            IntroPreviewMedia.Play();
+            _introPlaying = true;
+            BtnIntroPlay.Content = "\uE769";
+            StartIntroPlayWatch();
+        }
+        catch { }
+    }
+
+    /// <summary>播到"终点"就自己停（小画面里看到的片段长度＝启动时的长度）。</summary>
+    private void StartIntroPlayWatch()
+    {
+        _introPlayWatch ??= new System.Windows.Threading.DispatcherTimer(
+            TimeSpan.FromMilliseconds(200), System.Windows.Threading.DispatcherPriority.Background, (_, _) =>
+            {
+                try
+                {
+                    if (!_introPlaying) return;
+                    if (IntroPreviewMedia.Position.TotalSeconds >= SldIntroEnd.Value - 0.05)
+                    {
+                        IntroPreviewMedia.Pause();
+                        _introPlaying = false;
+                        _introPlayWatch?.Stop();
+                        BtnIntroPlay.Content = "\uE768";
+                    }
+                }
+                catch { }
+            }, Dispatcher);
+        _introPlayWatch.Start();
+    }
+
+    /// <summary>进开场页才装素材（几百 MB 的素材没必要一直挂在后台）。</summary>
+    private void LoadIntroPreviewMedia()
+    {
+        try
+        {
+            if (_introPreviewLoaded) { UpdateIntroPreviewLook(); return; }
+
+            string path = IntroClips.ResolvePath(CurrentIntroSource(), AppContext.BaseDirectory);
+            if (path.Length == 0 || !File.Exists(path))
+            {
+                TxtIntroPreviewEmpty.Text = "这个素材找不到（可能被移动或删掉了）";
+                return;
+            }
+
+            if (!_introPreviewHooked)
+            {
+                _introPreviewHooked = true;
+                IntroPreviewMedia.MediaOpened += (_, _) =>
+                {
+                    try
+                    {
+                        _introVideoAspect = IntroPreviewMedia.NaturalVideoHeight > 0
+                            ? (double)IntroPreviewMedia.NaturalVideoWidth / IntroPreviewMedia.NaturalVideoHeight
+                            : 0;
+                        IntroPreviewMedia.Position = TimeSpan.FromSeconds(Math.Max(0, SldIntroStart.Value));
+                        NudgeIntroFrame();
+                        UpdateIntroPreviewLook();
+                    }
+                    catch { }
+                };
+                IntroPreviewBox.SizeChanged += (_, _) => UpdateIntroPreviewLook();
+            }
+
+            IntroPreviewMedia.Source = new Uri(path);
+            _introPreviewLoaded = true;
+            TxtIntroPreviewEmpty.Visibility = Visibility.Collapsed;
+            UpdateIntroPreviewLook();
+        }
+        catch { }
+    }
+
+    private void UnloadIntroPreviewMedia()
+    {
+        try
+        {
+            _introSeekTimer?.Stop();
+            _introPlayWatch?.Stop();
+            _introPlaying = false;
+            BtnIntroPlay.Content = "\uE768";
+            if (!_introPreviewLoaded) return;
+            IntroPreviewMedia.Stop();
+            IntroPreviewMedia.Source = null;
+            _introPreviewLoaded = false;
+            TxtIntroPreviewEmpty.Visibility = Visibility.Visible;
+        }
+        catch { }
+    }
+
+    /// <summary>拖动时间轴时把 seek 合并成 120ms 一次：4K 素材连续 seek 会卡。</summary>
+    private void QueueIntroSeek(double seconds)
+    {
+        _introSeekTarget = seconds;
+        _introSeekTimer ??= new System.Windows.Threading.DispatcherTimer(
+            TimeSpan.FromMilliseconds(120), System.Windows.Threading.DispatcherPriority.Background, (_, _) =>
+            {
+                _introSeekTimer?.Stop();
+                ApplyIntroSeek(_introSeekTarget);
+            }, Dispatcher);
+        _introSeekTimer.Stop();
+        _introSeekTimer.Start();
+    }
+
+    private void ApplyIntroSeek(double seconds)
+    {
+        try
+        {
+            if (!_introPreviewLoaded) return;
+            IntroPreviewMedia.Position = TimeSpan.FromSeconds(Math.Max(0, seconds));
+            if (_introPlaying) return;
+            NudgeIntroFrame();      // 停着的时候也要把这一帧画出来
+        }
+        catch { }
+    }
+
+    /// <summary>
+    /// 把当前帧画出来：MediaElement 停在某帧时不一定重绘，先短播一下再暂停最稳。
+    /// （用户实测：刚进开场页那块小画面是黑的，点了播放才出画。）
+    /// </summary>
+    private void NudgeIntroFrame()
+    {
+        if (!_introPreviewLoaded) return;
+        try
+        {
+            IntroPreviewMedia.Play();
+            _introFrameTimer ??= new System.Windows.Threading.DispatcherTimer(
+                TimeSpan.FromMilliseconds(180), System.Windows.Threading.DispatcherPriority.Background, (_, _) =>
+                {
+                    _introFrameTimer?.Stop();
+                    try { if (!_introPlaying) IntroPreviewMedia.Pause(); } catch { }
+                }, Dispatcher);
+            _introFrameTimer.Stop();
+            _introFrameTimer.Start();
+        }
+        catch { }
+    }
+
+    /// <summary>把"填充方式 + 位置"照着主程序的做法画在小画面里（所见即所得）。</summary>
+    private void UpdateIntroPreviewLook()
+    {
+        try
+        {
+            if (!_introPreviewLoaded) return;
+
+            string stretch = CurrentStretchTag();
+            IntroPreviewMedia.Stretch = stretch switch
+            {
+                "fit" => System.Windows.Media.Stretch.Uniform,
+                "stretch" => System.Windows.Media.Stretch.Fill,
+                _ => System.Windows.Media.Stretch.UniformToFill,
+            };
+
+            var (h, v) = CurrentAlignTag();
+            HorizontalAlignment alignH = h <= 0.25 ? HorizontalAlignment.Left
+                : h >= 0.75 ? HorizontalAlignment.Right : HorizontalAlignment.Center;
+            VerticalAlignment alignV = v <= 0.25 ? VerticalAlignment.Top
+                : v >= 0.75 ? VerticalAlignment.Bottom : VerticalAlignment.Center;
+            IntroPreviewFit.HorizontalAlignment = alignH;
+            IntroPreviewFit.VerticalAlignment = alignV;
+
+            double boxW = IntroPreviewBox.ActualWidth - 2, boxH = IntroPreviewBox.ActualHeight - 2;
+            if (boxW < 40 || boxH < 40) return;
+
+            if (stretch == "fit" && _introVideoAspect > 0.05)
+            {
+                // 完整显示：小画面跟着素材比例走，位置才看得出来
+                double w = boxW, h2 = w / _introVideoAspect;
+                if (h2 > boxH) { h2 = boxH; w = h2 * _introVideoAspect; }
+                IntroPreviewFit.Width = w;
+                IntroPreviewFit.Height = h2;
+            }
+            else
+            {
+                IntroPreviewFit.Width = boxW;
+                IntroPreviewFit.Height = boxH;
+            }
+        }
+        catch { }
     }
 
     /// <summary>
@@ -584,6 +929,19 @@ public partial class SettingsWindow : Window
         try
         {
             SaveIntroSelection();
+
+            // 小画面正在放就先停掉：不然两路声音一起出来
+            try
+            {
+                if (_introPreviewLoaded)
+                {
+                    IntroPreviewMedia.Pause();
+                    _introPlaying = false;
+                    _introPlayWatch?.Stop();
+                    BtnIntroPlay.Content = "\uE768";
+                }
+            }
+            catch { }
 
             string path = IntroClips.ResolvePath(_host.Settings.IntroSource, AppContext.BaseDirectory);
             if (path.Length == 0)
@@ -712,9 +1070,9 @@ public partial class SettingsWindow : Window
                 s.IntroSource = index >= 0 && index < IntroClips.BuiltIn.Count ? IntroClips.BuiltIn[index].Key : "";
             }
 
-            s.IntroStart = ParseSeconds(TxtIntroStart.Text);
-            s.IntroEnd = ParseSeconds(TxtIntroEnd.Text);
-            s.IntroExtend = ParseSeconds(TxtIntroExtend.Text);
+            s.IntroStart = Math.Round(SldIntroStart.Value, 2);
+            s.IntroEnd = Math.Round(SldIntroEnd.Value, 2);
+            s.IntroExtend = Math.Round(SldIntroExtend.Value, 2);
             SaveIntroStyle();
             s.Save();
         }

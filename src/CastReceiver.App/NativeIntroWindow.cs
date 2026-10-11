@@ -184,6 +184,8 @@ internal sealed class NativeIntroWindow
     private double _hardDeadline = -1;     // 硬性期限（秒，相对秒表）：到点无条件收场
     private int _stalledFor;
     private bool _closed;
+    private readonly DateTime _startedAtUtc = DateTime.UtcNow;   // 这块画面什么时候起播的
+    private DateTime? _endedAtUtc;                               // 正片结束（含延长段）的时刻
     private readonly object _teardownGate = new();   // 收场只能做一次（消息/计时器/看门狗都可能来叫）
 
     private NativeIntroWindow() { }
@@ -201,6 +203,39 @@ internal sealed class NativeIntroWindow
     public static bool HasEnded
     {
         get { lock (Gate) { return _current?._videoEnded ?? true; } }
+    }
+
+    /// <summary>
+    /// 这块画面是不是**真卡住了**（给界面自愈用的判据）。
+    ///
+    /// 注意：判据不能只是"窗口还在不在" —— 正常播放期间界面早就就绪了（_introNative 已经清掉），
+    /// 那种情况下把它强制关掉，用户看到的就是"启动动画放到一半突然没了"。
+    /// 所以只认两种"确实异常"的证据：① 正片早就播完、淡出也早该走完（>8 秒）却还没收场；
+    /// ② 存活时间已经远超素材该有的时长（+20 秒）。
+    /// </summary>
+    public static bool IsStuck
+    {
+        get
+        {
+            lock (Gate)
+            {
+                NativeIntroWindow? window = _current;
+                if (window is null || window._closed) return false;
+
+                if (window._endedAtUtc is { } ended && (DateTime.UtcNow - ended).TotalSeconds > 8) return true;
+
+                double expected = (window._expectedEnd > 0 ? window._expectedEnd : 60)
+                                  + Math.Max(0, window._extendSeconds);
+                return (DateTime.UtcNow - window._startedAtUtc).TotalSeconds > expected + 20;
+            }
+        }
+    }
+
+    /// <summary>标记"正片结束（含延长段）"，顺手记下结束时刻，供 <see cref="IsStuck"/> 判断。</summary>
+    private void MarkEnded()
+    {
+        _videoEnded = true;
+        _endedAtUtc ??= DateTime.UtcNow;
     }
 
     /// <summary>
@@ -383,13 +418,13 @@ internal sealed class NativeIntroWindow
                 return;
             }
 
-            _videoEnded = true;
+            MarkEnded();
             if (_finishRequested) StartFadeOut();
         };
         _player.MediaFailed += (_, e) =>
         {
             Bootstrap.Log("原生入场动画播放失败：" + e.ErrorMessage);
-            _videoEnded = true;
+            MarkEnded();
             PostMessage(_hwnd, WmAppFinish, IntPtr.Zero, IntPtr.Zero);
         };
         _player.PlaybackSession.PlaybackStateChanged += (_, _) =>
@@ -398,7 +433,7 @@ internal sealed class NativeIntroWindow
             // 少了这个 _inExtension 守卫，延长段会被这里立刻判成结束（实测只延长了 1.18 秒而不是 3 秒）。
             if (_player.PlaybackSession.PlaybackState == MediaPlaybackState.Paused && _videoStarted && !_inExtension)
             {
-                _videoEnded = true;
+                MarkEnded();
             }
         };
 
@@ -441,7 +476,7 @@ internal sealed class NativeIntroWindow
 
         ShowWindow(_hwnd, SwShow);
         SetTimer(_hwnd, TimerWatch, 120, IntPtr.Zero);
-        SetTimer(_hwnd, TimerSelfCheck, 1600, IntPtr.Zero);   // 自检：一直没出画就让位
+        SetTimer(_hwnd, TimerSelfCheck, 4000, IntPtr.Zero);   // 自检：一直没出画就让位（4 秒：4K 冷启动实测要 1~3 秒才出画）
         shown.Set();
 
         while (GetMessage(out Msg msg, IntPtr.Zero, 0, 0))
@@ -558,7 +593,7 @@ internal sealed class NativeIntroWindow
 
                     // 1.6 秒还没出画：与其一直黑着，不如退出，让界面内那层遮罩接手
                     Bootstrap.Log("原生入场动画 1.6 秒未出画，退出让位给界面内遮罩");
-                    _videoEnded = true;
+                    MarkEnded();
                     _finishRequested = true;
                     StartFadeOut();
                 }
@@ -610,7 +645,7 @@ internal sealed class NativeIntroWindow
                     }
                     else
                     {
-                        _videoEnded = true;
+                        MarkEnded();
                     }
 
                     try { _player.Pause(); } catch { }        // 停在最后一帧
@@ -622,21 +657,36 @@ internal sealed class NativeIntroWindow
                 if (_clock.Elapsed.TotalSeconds >= _extendFrom + _extendSeconds)
                 {
                     Bootstrap.Log($"延长段结束（共 {_clock.Elapsed.TotalSeconds - _extendFrom:F1}s）");
-                    _videoEnded = true;
+                    MarkEnded();
                 }
             }
 
             // 保险：程序早就就绪了，画面却不再前进（解码卡住、事件没来），到点强制收场 ——
             // 绝不能留一块置顶窗盖住界面，那在用户看来就是"点了没反应"。
-            if (!_closed && _finishRequested && !_closing && !_inExtension)
+            //
+            // 但判据必须**容忍"正在打开 / 缓冲 / 跳转"**：4K 素材冷启动、又从第 20 秒起播时，
+            // 位置会有 1~2 秒不动；早先 0.8 秒就判"停住"，启动动画会被当场砍短（实测踩过）。
+            if (!_closed && _finishRequested && !_closing && !_inExtension && _videoStarted)
             {
-                if (Math.Abs(pos - _lastPosition) < 0.01)
+                bool buffering = false;
+                try
+                {
+                    var state = _player?.PlaybackSession.PlaybackState ?? MediaPlaybackState.None;
+                    buffering = state is MediaPlaybackState.Opening or MediaPlaybackState.Buffering;
+                }
+                catch { }
+
+                if (buffering)
+                {
+                    _stalledFor = 0;                 // 缓冲/跳转期间不推进是正常的
+                }
+                else if (Math.Abs(pos - _lastPosition) < 0.01)
                 {
                     _stalledFor += 120;
-                    if (_stalledFor > 800)
+                    if (_stalledFor > 2500)
                     {
-                        Bootstrap.Log("原生入场动画停住不动了，强制收场");
-                        _videoEnded = true;
+                        Bootstrap.Log("原生入场动画停住不动了（2.5 秒没推进），强制收场");
+                        MarkEnded();
                     }
                 }
                 else
@@ -677,7 +727,7 @@ internal sealed class NativeIntroWindow
             else if (_clock.Elapsed.TotalSeconds > _hardDeadline && !_videoEnded)
             {
                 Bootstrap.Log("入场动画超过硬性期限，强制收场");
-                _videoEnded = true;
+                MarkEnded();
                 _finishRequested = true;
                 StartFadeOut();
             }
@@ -769,7 +819,7 @@ internal sealed class NativeIntroWindow
         _userSkipped = true;
         if (_appReady)
         {
-            _videoEnded = true;
+            MarkEnded();
             StartFadeOut();
         }
     }

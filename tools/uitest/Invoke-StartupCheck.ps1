@@ -1,15 +1,20 @@
-﻿# 启动路径回归：**开着入场动画启动**时，不能弹出"发生异常"对话框，也不能有界面线程异常
+﻿# 启动路径回归：**开着入场动画启动**时，① 不弹"发生异常"对话框、② 动画要**按设置播够时长**（不能被谁掐短）、
+# ③ 界面正常交接、④ 日志里没有异常或"残留入场窗"告警
 #
 # 用法：powershell.exe -ExecutionPolicy Bypass -File Invoke-StartupCheck.ps1 -Exe "发布版\投屏Window\投屏Window.exe"
+#      加 -IntroSource "file:C:\...\某段.mp4" -IntroStartSeconds 20 -IntroEndSeconds 32 可以完全复刻用户那台的现象。
 #
 # 为什么单独有这个脚本：入场动画那条路径只在"启动时真的放动画"（ShowIntro=true）时才走，
-# 其它界面测试为了稳定都关掉了它，于是这里的异常曾经溜过去（实测：启动时弹
-# "发生异常：Value cannot be null. (Parameter 'callback')"）。这个脚本专盯这条路径。
+# 其它界面测试为了稳定都关掉了它，于是这里的坑一个接一个溜过去（实测两次：
+# 启动弹 "Value cannot be null. (Parameter 'callback')"；启动动画被界面自愈巡检当成
+# "残留窗"给强制关掉，12 秒的片子只放了 8.7 秒）。这个脚本专盯这条路径。
 param(
     [Parameter(Mandatory = $true)][string]$Exe,
     [string]$WorkRoot = "",
-    [int]$IntroEndSeconds = 2,
-    [int]$WaitSeconds = 22
+    [double]$IntroStartSeconds = 0,
+    [double]$IntroEndSeconds = 2,
+    [string]$IntroSource = "",
+    [int]$WaitSeconds = 0
 )
 
 $ErrorActionPreference = "Stop"
@@ -37,6 +42,20 @@ public static class StartProbe {
         }, IntPtr.Zero);
         return list;
     }
+
+    /// <summary>入场画面窗口（NativeIntroWindow 注册的类）现在还在显示吗。</summary>
+    public static bool IntroVisible(int pid) {
+        bool found = false;
+        EnumWindows(delegate(IntPtr h, IntPtr p) {
+            uint o; GetWindowThreadProcessId(h, out o);
+            if (o == (uint)pid && IsWindowVisible(h)) {
+                var c = new StringBuilder(256); GetClassNameW(h, c, 256);
+                if (c.ToString() == "CastReceiverIntroWindow") { found = true; return false; }
+            }
+            return true;
+        }, IntPtr.Zero);
+        return found;
+    }
 }
 '@
 
@@ -60,8 +79,8 @@ if (-not (Test-Path $clip)) { Write-Bad "找不到内置素材：$clip"; exit 1 
 $template = Join-Path $env:LOCALAPPDATA "CastReceiver\settings.json"
 $json = if (Test-Path $template) { Get-Content $template -Raw -Encoding UTF8 | ConvertFrom-Json } else { [pscustomobject]@{} }
 $json.ShowIntro = $true                   # ← 关键：这条路径就是要放动画
-$json.IntroSource = "file:$clip"
-$json.IntroStart = 0
+$json.IntroSource = if ($IntroSource) { $IntroSource } else { "file:$clip" }
+$json.IntroStart = $IntroStartSeconds
 $json.IntroEnd = $IntroEndSeconds
 $json.IntroExtend = 0
 $json.IntroFadeInMs = 200
@@ -75,12 +94,39 @@ $json.WindowLeft = 60; $json.WindowTop = 40; $json.WindowWidth = 1280; $json.Win
 $appLog = Join-Path $env:LOCALAPPDATA "CastReceiver\castreceiver.log"
 $logBefore = if (Test-Path $appLog) { (Get-Item $appLog).Length } else { 0 }
 
-Write-Step "开着入场动画启动"
+$playSeconds = [math]::Max(0.2, $IntroEndSeconds - $IntroStartSeconds)
+if ($WaitSeconds -le 0) { $WaitSeconds = [int]($playSeconds + 8) }
+
+Write-Step "开着入场动画启动（片长 $playSeconds 秒）"
 $p = Start-Process -FilePath $Exe -PassThru -ArgumentList "--vault-root `"$vaultRoot`" --settings-root `"$settingsRoot`" --instance-suffix `"-startup`""
-Write-Info "PID = $($p.Id)，等 $WaitSeconds 秒（动画放完 + 交接）"
-Start-Sleep -Seconds $WaitSeconds
+Write-Info "PID = $($p.Id)，全程盯 45 秒"
+
+# 从头盯到尾：入场窗出现/消失的时间点，用来判断"动画有没有被谁掐短"
+$firstSeen = $null; $lastSeen = $null; $seen = $false
+$deadline = (Get-Date).AddSeconds([math]::Max(45, $WaitSeconds))
+while ((Get-Date) -lt $deadline) {
+    if ([StartProbe]::IntroVisible($p.Id)) {
+        $seen = $true
+        if (-not $firstSeen) { $firstSeen = Get-Date }
+        $lastSeen = Get-Date
+    } elseif ($seen) {
+        break
+    }
+    if ($p.HasExited) { break }
+    Start-Sleep -Milliseconds 120
+}
 
 if ($p.HasExited) { Write-Bad "进程已退出（启动就崩了）"; exit 1 }
+Start-Sleep -Seconds 2
+
+if ($seen) {
+    $life = [math]::Round(($lastSeen - $firstSeen).TotalSeconds, 1)
+    Write-Ok "入场窗存活 $life 秒（配置 $playSeconds 秒 + 淡出 0.3 秒）"
+    if ($life -ge ($playSeconds + 0.2)) { Write-Ok "动画按设置播够了" }
+    else { Write-Bad ("动画被掐短了：" + $life + " 秒 < 配置的 " + $playSeconds + " 秒") }
+} else {
+    Write-Bad "入场窗根本没出现（启动动画没放起来）"
+}
 
 # ① 不能有"发生异常"对话框：它是 Win32 对话框（class #32770），标题正是「投屏Window」
 $windows = [StartProbe]::VisibleWindows($p.Id)
@@ -104,7 +150,7 @@ if ($found) { Write-Ok "主界面已就绪（能找到「打开设置」）" } e
 $intro = @($windows | Where-Object { $_ -like '*CastReceiverIntroWindow*' })
 if ($intro.Count -eq 0) { Write-Ok "入场窗已收场（没有残留）" } else { Write-Bad ("入场窗还在：" + ($intro -join ' / ')) }
 
-# ④ 日志里不能有界面线程异常
+# ④ 日志里不能有界面线程异常，也不能有"把正常动画当残留窗掐掉"这类告警
 if (Test-Path $appLog) {
     $fs = [System.IO.File]::Open($appLog, 'Open', 'Read', 'ReadWrite')
     $fs.Seek($logBefore, 'Begin') | Out-Null
@@ -113,6 +159,10 @@ if (Test-Path $appLog) {
     $errors = @($fresh -split "`n" | Where-Object { $_ -match '界面线程异常|发生异常' })
     if ($errors.Count -eq 0) { Write-Ok "本次启动日志里没有界面异常" }
     else { Write-Bad ("本次启动日志里有 " + $errors.Count + " 条异常：`n" + (($errors | Select-Object -First 3) -join "`n")) }
+
+    $heals = @($fresh -split "`n" | Where-Object { $_ -match '残留的入场窗|卡住没收场|强制销毁' })
+    if ($heals.Count -eq 0) { Write-Ok "没有触发过入场窗自愈（说明动画是正常放完的）" }
+    else { Write-Bad ("自愈巡检动过入场窗 " + $heals.Count + " 次（正常播放期间不该动它）：`n" + (($heals | Select-Object -First 3) -join "`n")) }
 } else {
     Write-Info "没有 castreceiver.log（受限环境里应用写不了 %LOCALAPPDATA%），跳过日志断言"
 }

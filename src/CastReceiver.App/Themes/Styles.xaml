@@ -335,10 +335,12 @@
         <Setter Property="FontSize" Value="12.5" />
         <Setter Property="Foreground" Value="{DynamicResource B.TextDim}" />
         <Setter Property="Cursor" Value="Hand" />
+        <!-- 内边距做成可覆盖的：九宫格那种自绘小格子要把 Padding 设成 0 -->
+        <Setter Property="Padding" Value="14,6" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="RadioButton">
-                    <Border x:Name="b" Background="#00000000" CornerRadius="8" Padding="14,6">
+                    <Border x:Name="b" Background="#00000000" CornerRadius="8" Padding="{TemplateBinding Padding}">
                         <ContentPresenter VerticalAlignment="Center" HorizontalAlignment="Center" />
                     </Border>
                     <ControlTemplate.Triggers>
