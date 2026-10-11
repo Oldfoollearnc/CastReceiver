@@ -823,12 +823,14 @@ public partial class SettingsWindow : Window
         {
             if (btn is null) continue;
             bool active = string.Equals(tag, current, StringComparison.OrdinalIgnoreCase);
+            // 未选中：卡片色的实心块 + 细边，落在浅灰的内容面上才分得清是"可点的选项"
             btn.Background = active
                 ? (System.Windows.Media.Brush)FindResource("B.Accent")
-                : (System.Windows.Media.Brush)FindResource("B.SurfaceHi");
+                : (System.Windows.Media.Brush)FindResource("B.Surface");
             btn.Foreground = active
                 ? (System.Windows.Media.Brush)FindResource("B.AccentText")
                 : (System.Windows.Media.Brush)FindResource("B.TextDim");
+            btn.FontWeight = active ? System.Windows.FontWeights.SemiBold : System.Windows.FontWeights.Normal;
         }
     }
 
@@ -1107,9 +1109,10 @@ public partial class SettingsWindow : Window
             if (btn is null) continue;
             bool active = string.Equals(tag, current, StringComparison.OrdinalIgnoreCase);
             btn.Background = active ? (System.Windows.Media.Brush)FindResource("B.Accent")
-                                    : (System.Windows.Media.Brush)FindResource("B.SurfaceHi");
+                                    : (System.Windows.Media.Brush)FindResource("B.Surface");
             btn.Foreground = active ? (System.Windows.Media.Brush)FindResource("B.AccentText")
                                     : (System.Windows.Media.Brush)FindResource("B.TextDim");
+            btn.FontWeight = active ? System.Windows.FontWeights.SemiBold : System.Windows.FontWeights.Normal;
         }
     }
 

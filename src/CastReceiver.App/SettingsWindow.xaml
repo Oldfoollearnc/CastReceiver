@@ -8,43 +8,43 @@
         WindowStyle="None" ResizeMode="CanResize" UseLayoutRounding="True" ShowInTaskbar="False">
 
     <shell:WindowChrome.WindowChrome>
-        <shell:WindowChrome CaptionHeight="46" ResizeBorderThickness="6" GlassFrameThickness="0"
+        <shell:WindowChrome CaptionHeight="48" ResizeBorderThickness="6" GlassFrameThickness="0"
                             CornerRadius="0" UseAeroCaptionButtons="False" />
     </shell:WindowChrome.WindowChrome>
 
     <Border Background="{DynamicResource B.Bg}" BorderBrush="{DynamicResource B.Line}" BorderThickness="1">
         <Grid>
             <Grid.RowDefinitions>
-                <RowDefinition Height="46" />
+                <RowDefinition Height="48" />
                 <RowDefinition Height="*" />
             </Grid.RowDefinitions>
 
             <Grid Grid.Row="0">
-                <TextBlock Text="设置" FontSize="13.5" FontWeight="SemiBold" Margin="20,0,0,0" VerticalAlignment="Center" />
-                <Button Content="&#xE8BB;" Style="{DynamicResource S.BtnIcon}" HorizontalAlignment="Right" Margin="0,0,10,0"
+                <TextBlock Text="设置" Style="{DynamicResource S.H1}" Margin="20,0,0,0" VerticalAlignment="Center" />
+                <Button Content="&#xE8BB;" Style="{DynamicResource S.BtnClose}" HorizontalAlignment="Right" Margin="0,0,8,0"
                         Click="BtnClose_Click" shell:WindowChrome.IsHitTestVisibleInChrome="True"
                         AutomationProperties.Name="关闭" ToolTip="关闭（Esc）" />
             </Grid>
 
             <Grid Grid.Row="1">
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="190" />
+                    <ColumnDefinition Width="200" />
                     <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
 
-                <StackPanel Grid.Column="0" Margin="12,4,6,12">
+                <StackPanel Grid.Column="0" Margin="14,6,10,12">
                     <RadioButton x:Name="NavGeneral" Style="{DynamicResource S.NavItem}" GroupName="nav" IsChecked="True"
-                                 Content="通用" AutomationProperties.Name="通用" Checked="Nav_Checked" />
+                                 Tag="&#xE80F;" Content="通用" AutomationProperties.Name="通用" Checked="Nav_Checked" />
                     <RadioButton x:Name="NavVisual" Style="{DynamicResource S.NavItem}" GroupName="nav"
-                                 Content="画面" AutomationProperties.Name="画面" Checked="Nav_Checked" />
+                                 Tag="&#xE7F4;" Content="画面" AutomationProperties.Name="画面" Checked="Nav_Checked" />
                     <RadioButton x:Name="NavNetwork" Style="{DynamicResource S.NavItem}" GroupName="nav"
-                                 Content="网络" AutomationProperties.Name="网络" Checked="Nav_Checked" />
+                                 Tag="&#xE701;" Content="网络" AutomationProperties.Name="网络" Checked="Nav_Checked" />
                     <RadioButton x:Name="NavSecurity" Style="{DynamicResource S.NavItem}" GroupName="nav"
-                                 Content="安全" AutomationProperties.Name="安全" Checked="Nav_Checked" />
+                                 Tag="&#xE72E;" Content="安全" AutomationProperties.Name="安全" Checked="Nav_Checked" />
                     <RadioButton x:Name="NavDiag" Style="{DynamicResource S.NavItem}" GroupName="nav"
-                                 Content="诊断" AutomationProperties.Name="诊断" Checked="Nav_Checked" />
+                                 Tag="&#xE9D9;" Content="诊断" AutomationProperties.Name="诊断" Checked="Nav_Checked" />
                     <RadioButton x:Name="NavAbout" Style="{DynamicResource S.NavItem}" GroupName="nav"
-                                 Content="关于" AutomationProperties.Name="关于" Checked="Nav_Checked" />
+                                 Tag="&#xE946;" Content="关于" AutomationProperties.Name="关于" Checked="Nav_Checked" />
                 </StackPanel>
 
                 <Border Grid.Column="1" Background="{DynamicResource B.BgSoft}" BorderBrush="{DynamicResource B.Line}"
@@ -54,7 +54,9 @@
                         <!-- 通用 -->
                         <ScrollViewer x:Name="PageGeneral" VerticalScrollBarVisibility="Auto">
                             <StackPanel>
-                                <TextBlock Text="外观" FontSize="13" FontWeight="SemiBold" />
+                                <TextBlock Style="{DynamicResource S.H1}" Text="通用" />
+                                <TextBlock Style="{DynamicResource S.Desc}" Text="外观、设备名与系统行为" Margin="0,5,0,0" />
+                                <TextBlock Text="外观" Style="{DynamicResource S.H2}" Margin="0,22,0,0" />
                                 <Border Style="{DynamicResource S.Card}" Padding="4" Margin="0,10,0,0" HorizontalAlignment="Left"
                                         Background="{DynamicResource B.SurfaceHi}">
                                     <StackPanel Orientation="Horizontal">
@@ -67,52 +69,52 @@
                                     </StackPanel>
                                 </Border>
 
-                                <TextBlock Text="设备" FontSize="13" FontWeight="SemiBold" Margin="0,26,0,0" />
-                                <TextBlock Text="手机投屏列表里显示的名称" FontSize="11.5" Foreground="{DynamicResource B.TextFaint}" Margin="0,8,0,0" />
+                                <TextBlock Text="设备" Style="{DynamicResource S.H2}" Margin="0,26,0,0" />
+                                <TextBlock Text="投屏列表里显示的名字" Style="{DynamicResource S.Desc}" Margin="0,8,0,0" />
                                 <TextBox x:Name="TxtName" Margin="0,6,0,0" HorizontalAlignment="Left" Width="300" TextChanged="TxtName_TextChanged" />
 
-                                <TextBlock Text="行为" FontSize="13" FontWeight="SemiBold" Margin="0,26,0,0" />
+                                <TextBlock Text="行为" Style="{DynamicResource S.H2}" Margin="0,26,0,0" />
                                 <Grid Margin="0,12,0,0">
                                     <StackPanel>
                                         <TextBlock Text="启动时自动开启接收端" FontSize="13" />
-                                        <TextBlock Text="打开程序即开始等待手机连接" FontSize="11.5" Foreground="{DynamicResource B.TextFaint}" Margin="0,2,0,0" />
+                                        <TextBlock Text="打开即开始等待连接" Style="{DynamicResource S.Desc}" Margin="0,2,0,0" />
                                     </StackPanel>
                                     <ToggleButton x:Name="SwAutoStart" Style="{DynamicResource S.Switch}" Checked="Setting_Changed" Unchecked="Setting_Changed" HorizontalAlignment="Right" VerticalAlignment="Center"
                                                   AutomationProperties.Name="启动时自动开启接收端" />
                                 </Grid>
-                                <Border Height="1" Background="{DynamicResource B.LineSoft}" Margin="0,12,0,0" />
+                                <Border Style="{DynamicResource S.Divider}" Margin="0,12,0,0" />
                                 <Grid Margin="0,12,0,0">
                                     <StackPanel>
                                         <TextBlock Text="手机连接时需要本机确认" FontSize="13" />
-                                        <TextBlock Text="更安全，但每次连接都要点一下" FontSize="11.5" Foreground="{DynamicResource B.TextFaint}" Margin="0,2,0,0" />
+                                        <TextBlock Text="更安全，每次连接点一下" Style="{DynamicResource S.Desc}" Margin="0,2,0,0" />
                                     </StackPanel>
                                     <ToggleButton x:Name="SwConfirm" Style="{DynamicResource S.Switch}" Checked="Setting_Changed" Unchecked="Setting_Changed" HorizontalAlignment="Right" VerticalAlignment="Center"
                                                   AutomationProperties.Name="手机连接时需要本机确认" />
                                 </Grid>
-                                <Border Height="1" Background="{DynamicResource B.LineSoft}" Margin="0,12,0,0" />
+                                <Border Style="{DynamicResource S.Divider}" Margin="0,12,0,0" />
                                 <Grid Margin="0,12,0,0">
                                     <StackPanel>
                                         <TextBlock Text="镜像静音" FontSize="13" />
-                                        <TextBlock Text="把手机传来的声音静音，可进一步降低延迟" FontSize="11.5" Foreground="{DynamicResource B.TextFaint}" Margin="0,2,0,0" />
+                                        <TextBlock Text="静音手机声音，延迟更低" Style="{DynamicResource S.Desc}" Margin="0,2,0,0" />
                                     </StackPanel>
                                     <ToggleButton x:Name="SwMute" Style="{DynamicResource S.Switch}" Checked="Setting_Changed" Unchecked="Setting_Changed" HorizontalAlignment="Right" VerticalAlignment="Center"
                                                   AutomationProperties.Name="镜像静音" />
                                 </Grid>
-                                <Border Height="1" Background="{DynamicResource B.LineSoft}" Margin="0,12,0,0" />
+                                <Border Style="{DynamicResource S.Divider}" Margin="0,12,0,0" />
                                 <Grid Margin="0,12,0,0">
                                     <StackPanel>
                                         <TextBlock Text="AirPlay 接收（iPhone / iPad）" FontSize="13" />
-                                        <TextBlock Text="让 iPhone/iPad 也能投屏到本机；安卓手机仍走「无线投屏」(Miracast)，两条链路互不影响" FontSize="11.5" Foreground="{DynamicResource B.TextFaint}" Margin="0,2,0,0" TextWrapping="Wrap" />
+                                        <TextBlock Text="让 iPhone / iPad 也能投屏；安卓走「无线投屏」，互不影响" Style="{DynamicResource S.Desc}" Margin="0,2,0,0" TextWrapping="Wrap" />
                                     </StackPanel>
                                     <ToggleButton x:Name="SwAirPlay" Style="{DynamicResource S.Switch}" Checked="Setting_Changed" Unchecked="Setting_Changed" HorizontalAlignment="Right" VerticalAlignment="Center"
                                                   AutomationProperties.Name="AirPlay 接收" />
                                 </Grid>
 
-                                <TextBlock Text="音频输出" FontSize="13" FontWeight="SemiBold" Margin="0,26,0,0" />
+                                <TextBlock Text="音频输出" Style="{DynamicResource S.H2}" Margin="0,26,0,0" />
                                 <Grid Margin="0,12,0,0">
                                     <StackPanel>
                                         <TextBlock Text="投屏时自动切换音频输出" FontSize="13" />
-                                        <TextBlock Text="投屏开始时把声音切到指定设备；安卓与苹果都适用" FontSize="11.5" Foreground="{DynamicResource B.TextFaint}" Margin="0,2,0,0" />
+                                        <TextBlock Text="投屏时把声音切到指定设备" Style="{DynamicResource S.Desc}" Margin="0,2,0,0" />
                                     </StackPanel>
                                     <ToggleButton x:Name="SwAudioSwitch" Style="{DynamicResource S.Switch}" Checked="Setting_Changed" Unchecked="Setting_Changed" HorizontalAlignment="Right" VerticalAlignment="Center"
                                                   AutomationProperties.Name="投屏时自动切换音频输出" />
@@ -120,7 +122,7 @@
                                 <Grid Margin="0,12,0,0">
                                     <StackPanel>
                                         <TextBlock Text="切换到" FontSize="13" />
-                                        <TextBlock x:Name="TxtAudioHint" Text="选择投屏时使用的播放设备" FontSize="11.5" Foreground="{DynamicResource B.TextFaint}" Margin="0,2,0,0" TextWrapping="Wrap" />
+                                        <TextBlock x:Name="TxtAudioHint" Text="投屏时使用的播放设备" Style="{DynamicResource S.Desc}" Margin="0,2,0,0" TextWrapping="Wrap" />
                                     </StackPanel>
                                     <ComboBox x:Name="CmbAudioTarget" Width="224" HorizontalAlignment="Right" VerticalAlignment="Center"
                                               SelectionChanged="AudioTarget_Changed" AutomationProperties.Name="投屏时切换到的音频设备" />
@@ -128,51 +130,53 @@
                                 <Grid Margin="0,12,0,0">
                                     <StackPanel>
                                         <TextBlock Text="结束后还原原来的设备" FontSize="13" />
-                                        <TextBlock Text="关闭则投屏结束后保留在该设备上" FontSize="11.5" Foreground="{DynamicResource B.TextFaint}" Margin="0,2,0,0" />
+                                        <TextBlock Text="关闭则结束后不还原" Style="{DynamicResource S.Desc}" Margin="0,2,0,0" />
                                     </StackPanel>
                                     <ToggleButton x:Name="SwAudioRestore" Style="{DynamicResource S.Switch}" Checked="Setting_Changed" Unchecked="Setting_Changed" HorizontalAlignment="Right" VerticalAlignment="Center"
                                                   AutomationProperties.Name="投屏结束后还原音频设备" />
                                 </Grid>
 
-                                <TextBlock Text="强调色" FontSize="13" FontWeight="SemiBold" Margin="0,26,0,0" />
+                                <TextBlock Text="强调色" Style="{DynamicResource S.H2}" Margin="0,26,0,0" />
                                 <StackPanel x:Name="AccentRow" Orientation="Horizontal" Margin="0,10,0,0" />
 
-                                <TextBlock Text="界面密度" FontSize="13" FontWeight="SemiBold" Margin="0,22,0,0" />
-                                <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
-                                    <RadioButton x:Name="SegComfortable" Style="{DynamicResource S.Segment}" GroupName="density" Content="舒适"
-                                                 AutomationProperties.Name="舒适" Checked="Density_Checked" Tag="Comfortable" />
-                                    <RadioButton x:Name="SegCompact" Style="{DynamicResource S.Segment}" GroupName="density" Content="紧凑"
-                                                 AutomationProperties.Name="紧凑" Checked="Density_Checked" Tag="Compact" />
-                                </StackPanel>
+                                <TextBlock Text="界面密度" Style="{DynamicResource S.H2}" Margin="0,22,0,0" />
+                                <Border Background="{DynamicResource B.SurfaceHi}" CornerRadius="10" Padding="4" Margin="0,10,0,0" HorizontalAlignment="Left">
+                                    <StackPanel Orientation="Horizontal">
+                                        <RadioButton x:Name="SegComfortable" Style="{DynamicResource S.Segment}" GroupName="density" Content="舒适"
+                                                     AutomationProperties.Name="舒适" Checked="Density_Checked" Tag="Comfortable" />
+                                        <RadioButton x:Name="SegCompact" Style="{DynamicResource S.Segment}" GroupName="density" Content="紧凑"
+                                                     AutomationProperties.Name="紧凑" Checked="Density_Checked" Tag="Compact" />
+                                    </StackPanel>
+                                </Border>
 
-                                <TextBlock Text="系统集成" FontSize="13" FontWeight="SemiBold" Margin="0,26,0,0" />
+                                <TextBlock Text="系统集成" Style="{DynamicResource S.H2}" Margin="0,26,0,0" />
                                 <Grid Margin="0,12,0,0">
                                     <StackPanel>
                                         <TextBlock Text="关闭窗口时最小化到托盘" FontSize="13" />
-                                        <TextBlock Text="关掉它则关闭窗口直接退出程序" FontSize="11.5" Foreground="{DynamicResource B.TextFaint}" Margin="0,2,0,0" />
+                                        <TextBlock Text="关闭则关窗即退出" Style="{DynamicResource S.Desc}" Margin="0,2,0,0" />
                                     </StackPanel>
                                     <ToggleButton x:Name="SwTray" Style="{DynamicResource S.Switch}" Checked="Setting_Changed" Unchecked="Setting_Changed" HorizontalAlignment="Right" VerticalAlignment="Center"
                                                   AutomationProperties.Name="关闭窗口时最小化到托盘" />
                                 </Grid>
-                                <Border Height="1" Background="{DynamicResource B.LineSoft}" Margin="0,12,0,0" />
+                                <Border Style="{DynamicResource S.Divider}" Margin="0,12,0,0" />
                                 <Grid Margin="0,12,0,0">
                                     <StackPanel>
                                         <TextBlock Text="开机自动启动" FontSize="13" />
-                                        <TextBlock Text="登录 Windows 后自动在后台待命" FontSize="11.5" Foreground="{DynamicResource B.TextFaint}" Margin="0,2,0,0" />
+                                        <TextBlock Text="登录后自动后台待命" Style="{DynamicResource S.Desc}" Margin="0,2,0,0" />
                                     </StackPanel>
                                     <ToggleButton x:Name="SwStartup" Style="{DynamicResource S.Switch}" Checked="Setting_Changed" Unchecked="Setting_Changed" HorizontalAlignment="Right" VerticalAlignment="Center"
                                                   AutomationProperties.Name="开机自动启动" />
                                 </Grid>
-                                <Border Height="1" Background="{DynamicResource B.LineSoft}" Margin="0,12,0,0" />
+                                <Border Style="{DynamicResource S.Divider}" Margin="0,12,0,0" />
                                 <Grid Margin="0,12,0,0">
                                     <StackPanel>
                                         <TextBlock Text="连接与断开时提示" FontSize="13" />
-                                        <TextBlock Text="播放提示音并弹出托盘气泡" FontSize="11.5" Foreground="{DynamicResource B.TextFaint}" Margin="0,2,0,0" />
+                                        <TextBlock Text="提示音 + 托盘气泡" Style="{DynamicResource S.Desc}" Margin="0,2,0,0" />
                                     </StackPanel>
                                     <ToggleButton x:Name="SwNotify" Style="{DynamicResource S.Switch}" Checked="Setting_Changed" Unchecked="Setting_Changed" HorizontalAlignment="Right" VerticalAlignment="Center"
                                                   AutomationProperties.Name="连接与断开时提示" />
                                 </Grid>
-                                <Border Height="1" Background="{DynamicResource B.LineSoft}" Margin="0,12,0,0" />
+                                <Border Style="{DynamicResource S.Divider}" Margin="0,12,0,0" />
                                 <Grid Margin="0,12,0,0">
                                     <StackPanel>
                                         <TextBlock Text="全局快捷键" FontSize="13" />
@@ -180,11 +184,11 @@
                                     <ToggleButton x:Name="SwHotkeys" Style="{DynamicResource S.Switch}" Checked="Setting_Changed" Unchecked="Setting_Changed" HorizontalAlignment="Right" VerticalAlignment="Center"
                                                   AutomationProperties.Name="全局快捷键" />
                                 </Grid>
-                                <Border Height="1" Background="{DynamicResource B.LineSoft}" Margin="0,12,0,0" />
+                                <Border Style="{DynamicResource S.Divider}" Margin="0,12,0,0" />
                                 <Grid Margin="0,12,0,0">
                                     <StackPanel>
                                         <TextBlock Text="云母材质背景（Win11）" FontSize="13" />
-                                        <TextBlock Text="窗口背景半透明，观感更接近系统原生" FontSize="11.5" Foreground="{DynamicResource B.TextFaint}" Margin="0,2,0,0" />
+                                        <TextBlock Text="半透明背景，更接近系统原生" Style="{DynamicResource S.Desc}" Margin="0,2,0,0" />
                                     </StackPanel>
                                     <ToggleButton x:Name="SwMica" Style="{DynamicResource S.Switch}" Checked="Setting_Changed" Unchecked="Setting_Changed" HorizontalAlignment="Right" VerticalAlignment="Center"
                                                   AutomationProperties.Name="云母材质背景" />
@@ -192,8 +196,8 @@
 
                                 <StackPanel Orientation="Horizontal" Margin="0,26,0,0">
                                     <Button Style="{DynamicResource S.Btn}" Content="使用引导" Click="BtnTutorial_Click" />
-                                    <TextBlock x:Name="TxtSaved" FontSize="11.5" Foreground="{DynamicResource B.TextFaint}" Margin="12,0,0,0"
-                                               VerticalAlignment="Center" Text="改动会立即生效并自动保存" />
+                                    <TextBlock x:Name="TxtSaved" Style="{DynamicResource S.Desc}" Margin="12,0,0,0"
+                                               VerticalAlignment="Center" Text="改动即时生效" />
                                 </StackPanel>
                             </StackPanel>
                         </ScrollViewer>
@@ -201,8 +205,10 @@
                         <!-- 画面 -->
                         <ScrollViewer x:Name="PageVisual" VerticalScrollBarVisibility="Auto" Visibility="Collapsed">
                             <StackPanel>
-                                <TextBlock Text="画面适配" FontSize="13" FontWeight="SemiBold" />
-                                <TextBlock Text="选择后立即生效，并且以后都按你的选择来（不会再被自动改掉）" FontSize="11.5"
+                                <TextBlock Style="{DynamicResource S.H1}" Text="画面" />
+                                <TextBlock Style="{DynamicResource S.Desc}" Text="画面适配、缩放、画质与全屏" Margin="0,5,0,0" />
+                                <TextBlock Text="画面适配" Style="{DynamicResource S.H2}" Margin="0,22,0,0" />
+                                <TextBlock Text="选择后立即生效，之后不再被自动改掉" FontSize="11.5"
                                            Foreground="{DynamicResource B.TextFaint}" Margin="0,6,0,0" />
                                 <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
                                     <Button x:Name="BtnFitFit" Content="适应" Style="{DynamicResource S.Btn}" Padding="14,7" Click="BtnFit_Click" Tag="Fit" />
@@ -212,14 +218,14 @@
                                 </StackPanel>
                                 <Border Style="{DynamicResource S.Card}" Padding="14" Margin="0,12,0,0">
                                     <TextBlock FontSize="12" Foreground="{DynamicResource B.TextDim}" TextWrapping="Wrap" LineHeight="21">
-                                        <Run Text="适应 · 完整显示，四周按需留黑（不变形不裁切）" /><LineBreak />
-                                        <Run Text="铺满 · 等比放大填满，超出部分裁掉（不变形，但会裁掉边缘）" /><LineBreak />
-                                        <Run Text="拉伸 · 强行拉满整块区域（填满且不裁切，但可能变形）" /><LineBreak />
-                                        <Run Text="原始 · 1:1 像素不缩放，画面大于区域时裁切" />
+                                        <Run Text="适应 · 完整显示，四周留黑" /><LineBreak />
+                                        <Run Text="铺满 · 等比放大，裁掉边缘" /><LineBreak />
+                                        <Run Text="拉伸 · 拉满，可能变形" /><LineBreak />
+                                        <Run Text="原始 · 1:1，超出即裁切" />
                                     </TextBlock>
                                 </Border>
 
-                                <TextBlock Text="缩放" FontSize="13" FontWeight="SemiBold" Margin="0,24,0,0" />
+                                <TextBlock Text="缩放" Style="{DynamicResource S.H2}" Margin="0,24,0,0" />
                                 <Grid Margin="0,10,0,0" Width="380" HorizontalAlignment="Left">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="*" />
@@ -234,8 +240,8 @@
                                 <Button Content="缩放复位到 100%" Style="{DynamicResource S.Btn}" Margin="0,10,0,0" HorizontalAlignment="Left"
                                         Click="BtnZoomReset_Click" />
 
-                                <TextBlock Text="画质档位" FontSize="13" FontWeight="SemiBold" Margin="0,24,0,0" />
-                                <TextBlock Text="向手机申请的分辨率与码率：越低越跟手，越高越清晰" FontSize="11.5"
+                                <TextBlock Text="画质档位" Style="{DynamicResource S.H2}" Margin="0,24,0,0" />
+                                <TextBlock Text="越低越跟手，越高越清晰" FontSize="11.5"
                                            Foreground="{DynamicResource B.TextFaint}" Margin="0,6,0,0" />
                                 <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
                                     <Button x:Name="BtnQualityLow" Content="低延迟" Style="{DynamicResource S.Btn}" Padding="14,7" Click="BtnQuality_Click" Tag="LowLatency" />
@@ -243,39 +249,39 @@
                                     <Button x:Name="BtnQualityHigh" Content="高画质" Style="{DynamicResource S.Btn}" Padding="14,7" Margin="8,0,0,0" Click="BtnQuality_Click" Tag="HighQuality" />
                                 </StackPanel>
 
-                                <TextBlock Text="全屏" FontSize="13" FontWeight="SemiBold" Margin="0,24,0,0" />
+                                <TextBlock Text="全屏" Style="{DynamicResource S.H2}" Margin="0,24,0,0" />
                                 <Grid Margin="0,12,0,0">
                                     <StackPanel>
                                         <TextBlock Text="手机连上后自动进入全屏" FontSize="13" />
-                                        <TextBlock Text="适合当电视用；断开时自动退出全屏" FontSize="11.5" Foreground="{DynamicResource B.TextFaint}" Margin="0,2,0,0" />
+                                        <TextBlock Text="断开时自动退出全屏" Style="{DynamicResource S.Desc}" Margin="0,2,0,0" />
                                     </StackPanel>
                                     <ToggleButton x:Name="SwAutoFullscreen" Style="{DynamicResource S.Switch}" Checked="Setting_Changed" Unchecked="Setting_Changed" HorizontalAlignment="Right" VerticalAlignment="Center"
                                                   AutomationProperties.Name="手机连上后自动进入全屏" />
                                 </Grid>
-                                <Border Height="1" Background="{DynamicResource B.LineSoft}" Margin="0,12,0,0" />
+                                <Border Style="{DynamicResource S.Divider}" Margin="0,12,0,0" />
                                 <Grid Margin="0,12,0,0">
                                     <StackPanel>
                                         <TextBlock Text="全屏时自动隐藏鼠标" FontSize="13" />
-                                        <TextBlock Text="3 秒不动鼠标指针就消失，动一下立刻恢复" FontSize="11.5" Foreground="{DynamicResource B.TextFaint}" Margin="0,2,0,0" />
+                                        <TextBlock Text="3 秒不动就隐藏，动一下恢复" Style="{DynamicResource S.Desc}" Margin="0,2,0,0" />
                                     </StackPanel>
                                     <ToggleButton x:Name="SwHideCursor" Style="{DynamicResource S.Switch}" Checked="Setting_Changed" Unchecked="Setting_Changed" HorizontalAlignment="Right" VerticalAlignment="Center"
                                                 AutomationProperties.Name="全屏时自动隐藏鼠标" />
                                 </Grid>
-                                <Border Height="1" Background="{DynamicResource B.LineSoft}" Margin="0,12,0,0" />
+                                <Border Style="{DynamicResource S.Divider}" Margin="0,12,0,0" />
                                 <Grid Margin="0,12,0,0">
                                     <StackPanel>
                                         <TextBlock Text="全屏时阻止屏保与休眠" FontSize="13" />
-                                        <TextBlock Text="长时间观看不会被系统息屏打断" FontSize="11.5" Foreground="{DynamicResource B.TextFaint}" Margin="0,2,0,0" />
+                                        <TextBlock Text="长时间观看不被息屏打断" Style="{DynamicResource S.Desc}" Margin="0,2,0,0" />
                                     </StackPanel>
                                     <ToggleButton x:Name="SwPreventSleep" Style="{DynamicResource S.Switch}" Checked="Setting_Changed" Unchecked="Setting_Changed" HorizontalAlignment="Right" VerticalAlignment="Center"
                                                   AutomationProperties.Name="全屏时阻止屏保与休眠" />
                                 </Grid>
 
-                                <TextBlock Text="加密库（截图与录像）" FontSize="13" FontWeight="SemiBold" Margin="0,24,0,0" />
+                                <TextBlock Text="加密库（截图与录像）" Style="{DynamicResource S.H2}" Margin="0,24,0,0" />
                                 <TextBlock FontSize="11.5" Foreground="{DynamicResource B.TextDim}" Margin="0,8,0,0" TextWrapping="Wrap" LineHeight="18"
-                                           Text="截图与录像不再以明文文件保存：内容加密后放在下面的库里，只有本程序能用账号密码解开。库位置随 Windows 用户隔离，也不会被云盘同步。" />
+                                           Text="截图与录像加密存放，只有本程序用账号密码能解开；库位置随 Windows 用户隔离，不会被云盘同步。" />
                                 <TextBox x:Name="TxtVaultPath" Margin="0,8,0,0" IsReadOnly="True" FontFamily="{DynamicResource F.Mono}" FontSize="11" />
-                                <TextBlock x:Name="TxtVaultState" FontSize="11.5" Foreground="{DynamicResource B.TextFaint}" Margin="0,6,0,0" TextWrapping="Wrap" />
+                                <TextBlock x:Name="TxtVaultState" Style="{DynamicResource S.Desc}" Margin="0,6,0,0" TextWrapping="Wrap" />
                                 <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
                                     <Button Content="打开我的库" Style="{DynamicResource S.BtnPrimary}" Click="BtnOpenVault_Click" />
                                     <Button Content="锁定" Style="{DynamicResource S.Btn}" Margin="8,0,0,0" Click="BtnLockVault_Click" />
@@ -283,7 +289,7 @@
                                             ToolTip="旧版本把明文截图/录像放在这里（新版不再写入）" />
                                 </StackPanel>
 
-                                <TextBlock Text="录像参数" FontSize="12.5" FontWeight="SemiBold" Margin="0,18,0,0" />
+                                <TextBlock Text="录像参数" Style="{DynamicResource S.H2}" Margin="0,18,0,0" />
                                 <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
                                     <TextBlock Text="帧率" FontSize="12" VerticalAlignment="Center" Foreground="{DynamicResource B.TextFaint}" />
                                     <ComboBox x:Name="CmbRecordFps" Width="80" Margin="8,0,0,0" SelectionChanged="RecordOption_Changed" />
@@ -292,9 +298,9 @@
                                     <TextBlock Text="单条上限" FontSize="12" VerticalAlignment="Center" Foreground="{DynamicResource B.TextFaint}" Margin="18,0,0,0" />
                                     <ComboBox x:Name="CmbRecordMinutes" Width="100" Margin="8,0,0,0" SelectionChanged="RecordOption_Changed" />
                                 </StackPanel>
-                                <TextBlock x:Name="TxtRecordEstimate" FontSize="11.5" Foreground="{DynamicResource B.TextFaint}" Margin="0,6,0,0" TextWrapping="Wrap" />
+                                <TextBlock x:Name="TxtRecordEstimate" Style="{DynamicResource S.Desc}" Margin="0,6,0,0" TextWrapping="Wrap" />
 
-                                <TextBlock Text="库容量与保留" FontSize="12.5" FontWeight="SemiBold" Margin="0,18,0,0" />
+                                <TextBlock Text="库容量与保留" Style="{DynamicResource S.H2}" Margin="0,18,0,0" />
                                 <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
                                     <TextBlock Text="软配额" FontSize="12" VerticalAlignment="Center" Foreground="{DynamicResource B.TextFaint}" />
                                     <ComboBox x:Name="CmbVaultQuota" Width="110" Margin="8,0,0,0" SelectionChanged="RecordOption_Changed" />
@@ -307,7 +313,7 @@
                                 <Grid Margin="0,16,0,0">
                                     <StackPanel>
                                         <TextBlock Text="退出程序时清空整个加密库" FontSize="13" />
-                                        <TextBlock Text="所有账号的全部截图与录像都会被删除，不可恢复" FontSize="11.5" Foreground="{DynamicResource B.TextFaint}" Margin="0,2,0,0" />
+                                        <TextBlock Text="所有账号的全部截图与录像都会被删除，不可恢复" Style="{DynamicResource S.Desc}" Margin="0,2,0,0" />
                                     </StackPanel>
                                     <ToggleButton x:Name="SwClearOnExit" Style="{DynamicResource S.Switch}" HorizontalAlignment="Right" VerticalAlignment="Center"
                                                   Checked="Setting_Changed" Unchecked="Setting_Changed" AutomationProperties.Name="退出时清空加密库" />
@@ -319,23 +325,23 @@
                                             ToolTip="旧版本会把明文帧写进 %TEMP%，这里一键清理" />
                                 </StackPanel>
 
-                                <TextBlock Text="显示" FontSize="13" FontWeight="SemiBold" Margin="0,24,0,0" />
+                                <TextBlock Text="显示" Style="{DynamicResource S.H2}" Margin="0,24,0,0" />
                                 <Grid Margin="0,12,0,0">
                                     <StackPanel>
-                                        <TextBlock Text="画面右上角显示通讯状态浮层" FontSize="13" />
+                                        <TextBlock Text="画面右上角显示状态浮层" FontSize="13" />
                                     </StackPanel>
                                     <ToggleButton x:Name="SwStats" Style="{DynamicResource S.Switch}" Checked="Setting_Changed" Unchecked="Setting_Changed" HorizontalAlignment="Right" VerticalAlignment="Center"
                                                   AutomationProperties.Name="通讯状态浮层" />
                                 </Grid>
-                                <Border Height="1" Background="{DynamicResource B.LineSoft}" Margin="0,12,0,0" />
+                                <Border Style="{DynamicResource S.Divider}" Margin="0,12,0,0" />
                                 <Grid Margin="0,12,0,0">
                                     <StackPanel>
-                                        <TextBlock Text="只在卡顿时显示（推荐）" FontSize="13" />
+                                        <TextBlock Text="只在卡顿时显示" FontSize="13" />
                                     </StackPanel>
                                     <ToggleButton x:Name="SwStatsAuto" Style="{DynamicResource S.Switch}" Checked="Setting_Changed" Unchecked="Setting_Changed" HorizontalAlignment="Right" VerticalAlignment="Center"
                                                   AutomationProperties.Name="只在卡顿时显示状态浮层" />
                                 </Grid>
-                                <Border Height="1" Background="{DynamicResource B.LineSoft}" Margin="0,12,0,0" />
+                                <Border Style="{DynamicResource S.Divider}" Margin="0,12,0,0" />
                                 <Grid Margin="0,12,0,0">
                                     <StackPanel>
                                         <TextBlock Text="启动入场动画" FontSize="13" />
@@ -367,7 +373,7 @@
                                     <TextBlock Text="再延长" FontSize="12.5" VerticalAlignment="Center" Foreground="{DynamicResource B.TextFaint}" />
                                     <TextBox x:Name="TxtIntroExtend" Width="72" Height="30" Margin="6,0,0,0" Padding="4,2" TextAlignment="Center" IsReadOnly="False"
                                              AutomationProperties.Name="入场动画延长秒数" />
-                                    <TextBlock Text="秒（停在最后一帧；这段里点一下就能跳过）" FontSize="12.5" VerticalAlignment="Center" Margin="6,0,0,0"
+                                    <TextBlock Text="秒（停在最后一帧，点一下可跳过）" FontSize="12.5" VerticalAlignment="Center" Margin="6,0,0,0"
                                                Foreground="{DynamicResource B.TextFaint}" />
                                 </StackPanel>
                                 <!-- 画面：大小 / 填充 / 裁切位置 / 音量 / 转场时长 都可编辑 -->
@@ -383,7 +389,7 @@
                                         <TextBlock Text="×" FontSize="12.5" VerticalAlignment="Center" Margin="6,0" Foreground="{DynamicResource B.TextFaint}" />
                                         <TextBox x:Name="TxtIntroHeight" Width="92" Height="30" Padding="4,2" TextAlignment="Center" IsReadOnly="False"
                                                  AutomationProperties.Name="入场画面高度" />
-                                        <TextBlock Text="像素（0 或留空＝跟随窗口大小）" FontSize="12.5" VerticalAlignment="Center" Margin="8,0,0,0"
+                                        <TextBlock Text="像素（留空＝跟随窗口）" FontSize="12.5" VerticalAlignment="Center" Margin="8,0,0,0"
                                                    Foreground="{DynamicResource B.TextFaint}" />
                                     </StackPanel>
                                 </Grid>
@@ -395,9 +401,9 @@
                                     <TextBlock Text="填充方式" FontSize="12.5" VerticalAlignment="Center" Foreground="{DynamicResource B.TextFaint}" />
                                     <ComboBox x:Name="CmbIntroStretch" Grid.Column="1" Height="30" HorizontalAlignment="Left" MinWidth="230"
                                               SelectionChanged="IntroStyle_Changed" AutomationProperties.Name="入场画面填充方式">
-                                        <ComboBoxItem Content="铺满并裁掉多余（不留黑边）" Tag="fill" />
-                                        <ComboBoxItem Content="完整显示（可能留黑边）" Tag="fit" />
-                                        <ComboBoxItem Content="拉伸填满（可能变形）" Tag="stretch" />
+                                        <ComboBoxItem Content="铺满，裁掉多余" Tag="fill" />
+                                        <ComboBoxItem Content="完整显示，可能留黑边" Tag="fit" />
+                                        <ComboBoxItem Content="拉伸填满，可能变形" Tag="stretch" />
                                     </ComboBox>
                                 </Grid>
                                 <Grid Margin="0,8,0,0">
@@ -453,10 +459,10 @@
                                     </StackPanel>
                                 </Grid>
                                 <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
-                                    <Button x:Name="BtnIntroPreview" Content="预览（像重进一次）" Style="{DynamicResource S.Btn}" Padding="16,6" FontSize="12"
+                                    <Button x:Name="BtnIntroPreview" Content="预览" Style="{DynamicResource S.Btn}" Padding="16,6" FontSize="12"
                                             Click="BtnIntroPreview_Click" AutomationProperties.Name="预览入场动画"
                                             AutomationProperties.AutomationId="IntroPreviewButton" />
-                                    <CheckBox x:Name="ChkIntroReenter" Content="藏起界面再播" Margin="12,0,0,0" VerticalAlignment="Center"
+                                    <CheckBox x:Name="ChkIntroReenter" Content="藏起界面" Margin="12,0,0,0" VerticalAlignment="Center"
                                               Click="IntroStyle_Changed" AutomationProperties.Name="预览时藏起界面" />
                                     <TextBlock x:Name="TxtIntroHint" Text="" FontSize="11.5" VerticalAlignment="Center" Margin="10,0,0,0"
                                                Foreground="{DynamicResource B.TextDim}" AutomationProperties.AutomationId="IntroHintText" />
@@ -467,19 +473,21 @@
                         <!-- 网络 -->
                         <ScrollViewer x:Name="PageNetwork" VerticalScrollBarVisibility="Auto" Visibility="Collapsed">
                             <StackPanel>
-                                <TextBlock Text="当前网络" FontSize="13" FontWeight="SemiBold" />
+                                <TextBlock Style="{DynamicResource S.H1}" Text="网络" />
+                                <TextBlock Style="{DynamicResource S.Desc}" Text="本机网络状态与防火墙放行" Margin="0,5,0,0" />
+                                <TextBlock Text="当前网络" Style="{DynamicResource S.H2}" Margin="0,22,0,0" />
                                 <Border Style="{DynamicResource S.Card}" Padding="14" Margin="0,10,0,0">
                                     <TextBlock x:Name="TxtNetwork" FontSize="12" Foreground="{DynamicResource B.TextDim}"
                                                TextWrapping="Wrap" LineHeight="21" FontFamily="{DynamicResource F.Mono}" />
                                 </Border>
-                                <TextBlock FontSize="11.5" Foreground="{DynamicResource B.TextFaint}" Margin="0,12,0,0" TextWrapping="Wrap">
-                                    首次使用需要放行防火墙并把当前 Wi-Fi 设为专用网络，否则手机的投屏列表里看不到本机。只需做一次。
+                                <TextBlock Style="{DynamicResource S.Desc}" Margin="0,12,0,0" TextWrapping="Wrap">
+                                    首次使用需放行防火墙并把当前 Wi-Fi 设为专用网络，否则手机投屏列表里看不到本机。只需做一次。
                                 </TextBlock>
                                 <StackPanel Orientation="Horizontal" Margin="0,14,0,0">
-                                    <Button Content="网络一键放行（需要同意一次管理员授权）" Style="{DynamicResource S.BtnPrimary}" Click="BtnFixNetwork_Click" />
+                                    <Button Content="一键放行网络（需管理员授权）" Style="{DynamicResource S.BtnPrimary}" Click="BtnFixNetwork_Click" />
                                     <Button Content="重新检测" Style="{DynamicResource S.Btn}" Margin="10,0,0,0" Click="BtnRefreshNetwork_Click" />
                                 </StackPanel>
-                                <Button Content="清理多余的网络放行规则（需要管理员授权）" Style="{DynamicResource S.Btn}" Margin="0,10,0,0"
+                                <Button Content="清理多余放行规则" Style="{DynamicResource S.Btn}" Margin="0,10,0,0"
                                         HorizontalAlignment="Left" Click="BtnCleanupFirewall_Click" AutomationProperties.Name="清理网络规则" />
                             </StackPanel>
                         </ScrollViewer>
@@ -488,7 +496,9 @@
                         <!-- 安全 -->
                         <ScrollViewer x:Name="PageSecurity" VerticalScrollBarVisibility="Auto" Visibility="Collapsed">
                             <StackPanel>
-                                <TextBlock Text="账号与加密库" FontSize="13" FontWeight="SemiBold" />
+                                <TextBlock Style="{DynamicResource S.H1}" Text="安全" />
+                                <TextBlock Style="{DynamicResource S.Desc}" Text="账号、加密库与隐私" Margin="0,5,0,0" />
+                                <TextBlock Text="账号与加密库" Style="{DynamicResource S.H2}" Margin="0,22,0,0" />
                                 <TextBlock x:Name="TxtSecVault" FontSize="11.5" Foreground="{DynamicResource B.TextDim}"
                                            Margin="0,8,0,0" TextWrapping="Wrap" LineHeight="18" />
                                 <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
@@ -496,10 +506,10 @@
                                     <Button Content="立即锁定" Style="{DynamicResource S.Btn}" Margin="8,0,0,0" Click="BtnLockVault_Click" />
                                     <Button Content="修改密码" Style="{DynamicResource S.Btn}" Margin="8,0,0,0" Click="BtnChangePassword_Click" />
                                 </StackPanel>
-                                <TextBlock FontSize="11.5" Foreground="{DynamicResource B.TextFaint}" Margin="0,8,0,0" TextWrapping="Wrap"
-                                           Text="提示：Ctrl+Alt+L 可在任何时候立即上锁；关闭库窗口也会自动上锁。" />
+                                <TextBlock Style="{DynamicResource S.Desc}" Margin="0,8,0,0" TextWrapping="Wrap"
+                                           Text="Ctrl+Alt+L 随时上锁；关闭库窗口也会自动锁" />
 
-                                <TextBlock Text="投屏隐私" FontSize="13" FontWeight="SemiBold" Margin="0,24,0,0" />
+                                <TextBlock Text="投屏隐私" Style="{DynamicResource S.H2}" Margin="0,24,0,0" />
                                 <Grid Margin="0,12,0,0">
                                     <StackPanel>
                                         <TextBlock Text="隐私日志模式" FontSize="13" />
@@ -508,7 +518,7 @@
                                                   VerticalAlignment="Center" Checked="Setting_Changed" Unchecked="Setting_Changed"
                                                   AutomationProperties.Name="隐私日志模式" />
                                 </Grid>
-                                <Border Height="1" Background="{DynamicResource B.LineSoft}" Margin="0,12,0,0" />
+                                <Border Style="{DynamicResource S.Divider}" Margin="0,12,0,0" />
                                 <Grid Margin="0,12,0,0">
                                     <StackPanel>
                                         <TextBlock Text="界面显示手机名称" FontSize="13" />
@@ -517,7 +527,7 @@
                                                   VerticalAlignment="Center" Checked="Setting_Changed" Unchecked="Setting_Changed"
                                                   AutomationProperties.Name="界面显示手机名称" />
                                 </Grid>
-                                <Border Height="1" Background="{DynamicResource B.LineSoft}" Margin="0,12,0,0" />
+                                <Border Style="{DynamicResource S.Divider}" Margin="0,12,0,0" />
                                 <Grid Margin="0,12,0,0">
                                     <StackPanel>
                                         <TextBlock Text="允许其他设备抢占投屏" FontSize="13" />
@@ -526,11 +536,11 @@
                                                   VerticalAlignment="Center" Checked="Setting_Changed" Unchecked="Setting_Changed"
                                                   AutomationProperties.Name="允许其他设备抢占投屏" />
                                 </Grid>
-                                <Border Height="1" Background="{DynamicResource B.LineSoft}" Margin="0,12,0,0" />
+                                <Border Style="{DynamicResource S.Divider}" Margin="0,12,0,0" />
                                 <Grid Margin="0,12,0,0">
                                     <StackPanel>
                                         <TextBlock Text="键盘回传" FontSize="13" />
-                                        <TextBlock Text="把本机键盘的按键发给正在投屏的手机（电脑 → 手机）。多数手机不支持；连接后看主界面「键盘回传」状态" FontSize="11.5"
+                                        <TextBlock Text="把键盘按键发给手机（多数手机不支持）" FontSize="11.5"
                                                    Foreground="{DynamicResource B.TextFaint}" Margin="0,2,0,0" TextWrapping="Wrap" MaxWidth="430"
                                                    HorizontalAlignment="Left" />
                                     </StackPanel>
@@ -538,7 +548,7 @@
                                                   VerticalAlignment="Center" Checked="Setting_Changed" Unchecked="Setting_Changed"
                                                   AutomationProperties.Name="键盘回传" />
                                 </Grid>
-                                <Border Height="1" Background="{DynamicResource B.LineSoft}" Margin="0,12,0,0" />
+                                <Border Style="{DynamicResource S.Divider}" Margin="0,12,0,0" />
                                 <Grid Margin="0,12,0,0">
                                     <StackPanel>
                                         <TextBlock Text="启动时清空无线显示设备历史" FontSize="13" />
@@ -552,14 +562,14 @@
                                     <ComboBox x:Name="CmbPairing" Width="200" Margin="8,0,0,0" SelectionChanged="SecurityOption_Changed" />
                                     <Button Content="清除日志文件" Style="{DynamicResource S.Btn}" Margin="16,0,0,0" Click="BtnClearLog_Click" />
                                 </StackPanel>
-                                <TextBlock FontSize="11.5" Foreground="{DynamicResource B.TextFaint}" Margin="0,6,0,0" TextWrapping="Wrap"
-                                           Text="「要求 PIN」会在配对时于本机显示一串 PIN，需要在手机上输入（部分手机不支持，会自动退回本机确认）。" />
+                                <TextBlock Style="{DynamicResource S.Desc}" Margin="0,6,0,0" TextWrapping="Wrap"
+                                           Text="「要求 PIN」会在本机显示一串 PIN，需在手机上输入（部分手机不支持，会自动退回本机确认）。" />
 
-                                <TextBlock Text="隐私：防截屏" FontSize="13" FontWeight="SemiBold" Margin="0,24,0,0" />
+                                <TextBlock Text="隐私：防截屏" Style="{DynamicResource S.H2}" Margin="0,24,0,0" />
                                 <Grid Margin="0,12,0,0">
                                     <StackPanel>
                                         <TextBlock Text="防截屏（其他程序截本窗口只能得到黑屏）" FontSize="13" />
-                                        <TextBlock Text="打开：会议共享 / 远程协助 / 录屏软件截本窗口只会得到一片黑，画面不外泄。&#10;关闭：正常，可以被截屏、录制、共享 —— 需要把画面录下来或共享给别人时用这个。" FontSize="11.5"
+                                        <TextBlock Text="打开：其它程序截本窗口只能得到黑屏。&#10;关闭：可正常截屏 / 录制 / 共享。" FontSize="11.5"
                                                    Foreground="{DynamicResource B.TextFaint}" Margin="0,2,0,0" TextWrapping="Wrap" MaxWidth="440" />
                                     </StackPanel>
                                     <ToggleButton x:Name="SwAntiCapture" Style="{DynamicResource S.Switch}" HorizontalAlignment="Right"
@@ -574,7 +584,7 @@
                                     <Button Content="运行反截屏自检" Style="{DynamicResource S.Btn}" Margin="16,0,0,0" Click="BtnAntiCaptureCheck_Click" />
                                 </StackPanel>
 
-                                <TextBlock Text="离开与刷新" FontSize="13" FontWeight="SemiBold" Margin="0,24,0,0" />
+                                <TextBlock Text="离开与刷新" Style="{DynamicResource S.H2}" Margin="0,24,0,0" />
                                 <Grid Margin="0,12,0,0">
                                     <StackPanel>
                                         <TextBlock Text="锁屏 / 切换用户时自动上锁并遮挡画面" FontSize="13" />
@@ -586,7 +596,7 @@
                                 <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
                                     <TextBlock Text="空闲时自动刷新接收广播" FontSize="12" VerticalAlignment="Center" Foreground="{DynamicResource B.TextFaint}" />
                                     <ComboBox x:Name="CmbIdleRefresh" Width="150" Margin="8,0,0,0" SelectionChanged="SecurityOption_Changed" />
-                                    <TextBlock Text="（手机搜不到设备时，重启程序能好 —— 这里让它自动做）" FontSize="11.5"
+                                    <TextBlock Text="手机搜不到设备时自动刷新" FontSize="11.5"
                                                VerticalAlignment="Center" Foreground="{DynamicResource B.TextFaint}" Margin="10,0,0,0" />
                                 </StackPanel>
                                 <TextBox x:Name="TxtAntiCaptureReport" Margin="0,10,0,0" Height="130" IsReadOnly="True" TextWrapping="Wrap"
@@ -594,7 +604,7 @@
                                          Background="{DynamicResource B.Surface}" Foreground="{DynamicResource B.TextDim}"
                                          BorderBrush="{DynamicResource B.Line}" />
 
-                                <TextBlock Text="隐私体检" FontSize="13" FontWeight="SemiBold" Margin="0,24,0,0" />
+                                <TextBlock Text="隐私体检" Style="{DynamicResource S.H2}" Margin="0,24,0,0" />
                                 <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
                                     <Button Content="重新体检" Style="{DynamicResource S.Btn}" Click="BtnCheckup_Click" />
                                     <Button Content="关闭 Game Bar 后台录制" Style="{DynamicResource S.Btn}" Margin="8,0,0,0" Click="BtnFixGameBar_Click" />
@@ -610,9 +620,14 @@
                         <Grid x:Name="PageDiag" Visibility="Collapsed">
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
                                 <RowDefinition Height="*" />
                             </Grid.RowDefinitions>
-                            <StackPanel Grid.Row="0" Orientation="Horizontal">
+                            <StackPanel Grid.Row="0">
+                                <TextBlock Style="{DynamicResource S.H1}" Text="诊断" />
+                                <TextBlock Style="{DynamicResource S.Desc}" Text="自检、日志与连接体检" Margin="0,5,0,0" />
+                            </StackPanel>
+                            <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,14,0,0">
                                 <Button x:Name="BtnSelfTest" Content="运行自检" Style="{DynamicResource S.BtnPrimary}" Click="BtnSelfTest_Click" />
                                 <Button x:Name="TabResults" Content="自检结果" Style="{DynamicResource S.Btn}" Margin="8,0,0,0" Click="DiagTab_Click" Tag="results" />
                                 <Button x:Name="TabLog" Content="运行日志" Style="{DynamicResource S.Btn}" Margin="8,0,0,0" Click="DiagTab_Click" Tag="log" />
@@ -622,7 +637,7 @@
                                 <TextBlock x:Name="TxtSummary" FontSize="12" Foreground="{DynamicResource B.TextDim}" Margin="14,0,0,0" VerticalAlignment="Center" />
                             </StackPanel>
 
-                            <Border Grid.Row="1" Style="{DynamicResource S.Card}" Padding="12" Margin="0,12,0,0">
+                            <Border Grid.Row="2" Style="{DynamicResource S.Card}" Padding="12" Margin="0,14,0,0">
                                 <Grid>
                                     <ScrollViewer x:Name="ViewResults" VerticalScrollBarVisibility="Auto">
                                         <ItemsControl x:Name="LstResults">
@@ -658,25 +673,27 @@
                         <!-- 关于 -->
                         <ScrollViewer x:Name="PageAbout" VerticalScrollBarVisibility="Auto" Visibility="Collapsed">
                             <StackPanel>
-                                <StackPanel Orientation="Horizontal">
-                                    <Image Source="app.ico" Width="64" Height="64" VerticalAlignment="Top" />
+                                <TextBlock Style="{DynamicResource S.H1}" Text="关于" />
+                                <TextBlock Style="{DynamicResource S.Desc}" Text="版本、运行方式与更新源" Margin="0,5,0,0" />
+                                <StackPanel Orientation="Horizontal" Margin="0,20,0,0">
+                                    <Image Source="app.ico" Width="56" Height="56" VerticalAlignment="Top" />
                                     <StackPanel Margin="16,0,0,0" VerticalAlignment="Center">
-                                        <TextBlock Text="投屏Window 桌面版" FontSize="17" FontWeight="SemiBold" />
+                                        <TextBlock Text="投屏Window 桌面版" FontSize="16" FontWeight="SemiBold" />
                                         <TextBlock x:Name="TxtVersion" FontSize="12" Foreground="{DynamicResource B.TextDim}" Margin="0,4,0,0" />
                                     </StackPanel>
                                 </StackPanel>
-                                <Border Style="{DynamicResource S.Card}" Padding="16" Margin="0,18,0,0">
+                                <Border Style="{DynamicResource S.Card}" Padding="16,14" Margin="0,16,0,0">
                                     <StackPanel>
                                         <Grid>
                                             <TextBlock Text="开发者" FontSize="12" Foreground="{DynamicResource B.TextDim}" />
                                             <TextBlock Text="猪猪" FontSize="12" HorizontalAlignment="Right" />
                                         </Grid>
-                                        <Border Height="1" Background="{DynamicResource B.LineSoft}" Margin="0,10" />
+                                        <Border Style="{DynamicResource S.Divider}" Margin="0,10" />
                                         <Grid>
                                             <TextBlock Text="版本" FontSize="12" Foreground="{DynamicResource B.TextDim}" />
                                             <TextBlock x:Name="TxtVersion2" FontSize="12" HorizontalAlignment="Right" />
                                         </Grid>
-                                        <Border Height="1" Background="{DynamicResource B.LineSoft}" Margin="0,10" />
+                                        <Border Style="{DynamicResource S.Divider}" Margin="0,10" />
                                         <Grid>
                                             <TextBlock Text="运行方式" FontSize="12" Foreground="{DynamicResource B.TextDim}" />
                                             <TextBlock x:Name="TxtRuntime" FontSize="12" HorizontalAlignment="Right" />
@@ -684,11 +701,12 @@
                                     </StackPanel>
                                 </Border>
 
-                                <TextBlock Text="更新" FontSize="13" FontWeight="SemiBold" Margin="0,24,0,0" />
-                                <TextBox x:Name="TxtUpdateUrl" Margin="0,6,0,0" HorizontalAlignment="Left" Width="420"
+                                <TextBlock Text="更新源" Style="{DynamicResource S.H2}" Margin="0,24,0,0" />
+                                <TextBlock Style="{DynamicResource S.Desc}" Text="填一个返回 JSON 的地址；留空则用官方更新源" Margin="0,6,0,0" />
+                                <TextBox x:Name="TxtUpdateUrl" Margin="0,8,0,0" HorizontalAlignment="Left" Width="420" AutomationProperties.Name="更新源地址"
                                          ToolTip="一个返回 JSON 的地址，形如 {&quot;version&quot;:&quot;1.1.0&quot;,&quot;url&quot;:&quot;下载页&quot;}" />
                                 <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
-                                    <Button Content="保存更新源" Style="{DynamicResource S.Btn}" Click="BtnSaveUpdate_Click" />
+                                    <Button Content="保存" Style="{DynamicResource S.Btn}" Click="BtnSaveUpdate_Click" />
                                     <Button x:Name="BtnCheckUpdate" Content="检查更新" Style="{DynamicResource S.Btn}" Margin="8,0,0,0" Click="BtnCheckUpdate_Click" />
                                     <TextBlock x:Name="TxtUpdateResult" FontSize="12" Foreground="{DynamicResource B.TextDim}" Margin="12,0,0,0" VerticalAlignment="Center" />
                                 </StackPanel>

@@ -5,16 +5,16 @@
         Background="Transparent" ShowInTaskbar="False" ShowActivated="False" ResizeMode="NoResize"
         WindowStartupLocation="Manual" FontFamily="{DynamicResource F.Ui}" Foreground="{DynamicResource B.Text}">
     <Border Background="{DynamicResource B.OverlayBgSoft}" BorderBrush="{DynamicResource B.Line}" BorderThickness="1"
-            CornerRadius="12" Padding="14,12">
+            CornerRadius="14" Padding="15,13">
         <StackPanel>
             <StackPanel Orientation="Horizontal">
-                <Ellipse x:Name="Dot" Width="7" Height="7" Fill="{DynamicResource B.Ok}" VerticalAlignment="Center" />
-                <TextBlock x:Name="TxtTitle" FontSize="12.5" FontWeight="SemiBold" Margin="8,0,0,0" VerticalAlignment="Center" />
+                <Ellipse x:Name="Dot" Width="8" Height="8" Fill="{DynamicResource B.Ok}" VerticalAlignment="Center" />
+                <TextBlock x:Name="TxtTitle" FontSize="13" FontWeight="SemiBold" Margin="9,0,0,0" VerticalAlignment="Center" />
             </StackPanel>
             <!-- 正文限高 + 省略号：提示条会从右下角往上长，不限高就会一路盖住画面 -->
-            <TextBlock x:Name="TxtBody" FontSize="11.5" Foreground="{DynamicResource B.TextDim}" Margin="15,6,0,0"
+            <TextBlock x:Name="TxtBody" FontSize="12" Foreground="{DynamicResource B.TextDim}" Margin="17,7,0,0"
                        TextWrapping="Wrap" MaxWidth="330" MaxHeight="104" TextTrimming="CharacterEllipsis" />
-            <Button x:Name="BtnAction" Style="{DynamicResource S.Btn}" Margin="15,10,0,0" HorizontalAlignment="Left"
+            <Button x:Name="BtnAction" Style="{DynamicResource S.Btn}" Margin="17,10,0,0" HorizontalAlignment="Left"
                     Padding="12,6" FontSize="12" Visibility="Collapsed" Click="BtnAction_Click" />
         </StackPanel>
     </Border>

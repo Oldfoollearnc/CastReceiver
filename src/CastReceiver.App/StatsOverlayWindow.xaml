@@ -4,15 +4,15 @@
         SizeToContent="WidthAndHeight" MaxWidth="360" MaxHeight="300" WindowStyle="None" AllowsTransparency="True" Background="Transparent"
         ShowInTaskbar="False" ShowActivated="False" Topmost="True" ResizeMode="NoResize"
         FontFamily="{DynamicResource F.Ui}" Foreground="{DynamicResource B.Text}" WindowStartupLocation="Manual" IsHitTestVisible="False">
-    <Border Background="{DynamicResource B.OverlayBgSoft}" BorderBrush="{DynamicResource B.Line}" BorderThickness="1" CornerRadius="10" Padding="12,8">
+    <Border Background="{DynamicResource B.OverlayBgSoft}" BorderBrush="{DynamicResource B.Line}" BorderThickness="1" CornerRadius="12" Padding="13,9">
         <StackPanel>
             <StackPanel Orientation="Horizontal">
-                <Ellipse x:Name="Dot" Width="7" Height="7" Fill="{DynamicResource B.Ok}" VerticalAlignment="Center" />
-                <TextBlock x:Name="TxtLine" FontSize="12" Foreground="{DynamicResource B.Text}" Margin="8,0,0,0"
+                <Ellipse x:Name="Dot" Width="8" Height="8" Fill="{DynamicResource B.Ok}" VerticalAlignment="Center" />
+                <TextBlock x:Name="TxtLine" FontSize="12" Foreground="{DynamicResource B.Text}" Margin="9,0,0,0"
                            VerticalAlignment="Center" FontFamily="{DynamicResource F.Mono}" Text="—" />
             </StackPanel>
             <!-- 明细只留一行、超长省略：用户反馈过这块会越长越高、把画面压住 -->
-            <TextBlock x:Name="TxtDetail" FontSize="10.5" Foreground="{DynamicResource B.TextFaint}" Margin="15,3,0,0"
+            <TextBlock x:Name="TxtDetail" FontSize="10.5" Foreground="{DynamicResource B.TextFaint}" Margin="17,3,0,0"
                        FontFamily="{DynamicResource F.Mono}" Text="" MaxWidth="300" TextWrapping="NoWrap"
                        TextTrimming="CharacterEllipsis" />
 

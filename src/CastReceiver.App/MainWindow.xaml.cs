@@ -69,16 +69,16 @@ public partial class MainWindow : Window
     private static readonly TipPage[] TipPages =
     {
         new("先连同一个 Wi-Fi",
-            "手机与这台电脑连到同一个无线网络。推荐 5GHz 频段，画面更跟手、更少卡顿。",
+            "手机与电脑连同一个无线网络。推荐 5GHz，画面更跟手。",
             "M2.5,7 A10.5,10.5 0 0 1 17.5,7 M5.5,10.2 A6.5,6.5 0 0 1 14.5,10.2 M8.6,13.4 A2.2,2.2 0 0 1 11.4,13.4"),
         new("手机上点「无线投屏」",
-            "下拉快捷面板 →「无线投屏 / 投射屏幕」→ 在设备列表里选择本机名称。",
+            "下拉快捷面板 →「无线投屏 / 投射屏幕」→ 选中本机名称。",
             "M6.5,2.5 H13.5 A1.5,1.5 0 0 1 15,4 V16 A1.5,1.5 0 0 1 13.5,17.5 H6.5 A1.5,1.5 0 0 1 5,16 V4 A1.5,1.5 0 0 1 6.5,2.5 Z M8,5.2 H12 M9,15.2 H11"),
         new("电脑上确认一次",
-            "首次连接时电脑会弹出确认框；可在 设置 → 安全 里改成要求输入 PIN，更严格。",
+            "首次连接电脑会弹确认框；可在设置里改成要求 PIN。",
             "M3.5,10.6 L7.6,14.6 L16.5,4.6"),
         new("随手留存画面",
-            "投屏中点「截屏」或「录制」，内容会加密存入「我的库」，只有你的密码能查看。",
+            "截屏 / 录制会加密存进「我的库」，只有你的密码能看。",
             "M10,2.2 L16.2,4.6 V9.2 C16.2,13.2 13.4,16.2 10,17.8 C6.6,16.2 3.8,13.2 3.8,9.2 V4.6 Z"),
     };
 
@@ -2140,7 +2140,7 @@ public partial class MainWindow : Window
         ActionsRow.Visibility = (showFix || latencyBad) ? Visibility.Visible : Visibility.Collapsed;
 
         TxtHotspot.Visibility = (hotspot && !mirroring) ? Visibility.Visible : Visibility.Collapsed;
-        TxtHotspot.Text = "提示：移动热点占用了 Wi-Fi Direct，可能连不上（可在设置里关闭热点）";
+        TxtHotspot.Text = "移动热点占用了 Wi-Fi Direct，可能连不上（可在设置里关闭热点）";
         TxtHotspot.ToolTip = _host.HotspotConflict;
 
         MiracastHost.Visibility = (mirroring && !_masked && !_introActive && !_introNative && WindowState != WindowState.Minimized)
@@ -2226,9 +2226,9 @@ public partial class MainWindow : Window
             int index = i;
             var dot = new System.Windows.Shapes.Ellipse
             {
-                Width = 6,
-                Height = 6,
-                Fill = (System.Windows.Media.Brush)FindResource(i == 0 ? "B.Text" : "B.Line"),
+                Width = 7,
+                Height = 7,
+                Fill = (System.Windows.Media.Brush)FindResource(i == 0 ? "B.Accent" : "B.Line"),
             };
 
             // 圆点做成按钮：可以点它直接翻到对应那一页
@@ -2274,7 +2274,7 @@ public partial class MainWindow : Window
             TxtTipPage.Text = $"{index + 1} / {count}";
             for (int i = 0; i < TipDots.Children.Count; i++)
                 if (TipDots.Children[i] is System.Windows.Controls.Button { Content: System.Windows.Shapes.Ellipse dot })
-                    dot.Fill = (System.Windows.Media.Brush)FindResource(i == index ? "B.Text" : "B.Line");
+                    dot.Fill = (System.Windows.Media.Brush)FindResource(i == index ? "B.Accent" : "B.Line");
         }
 
         if (!animate || TipPageHost.Visibility != Visibility.Visible)
@@ -2756,7 +2756,7 @@ public partial class MainWindow : Window
             _ => Interop.CompositionVideoHost.VideoFit.Fit,
         };
         SetFit(next);
-        TxtStatus.Text = $"画面适配：{FitName(next)}（适应=留黑边，铺满=裁切放大，拉伸=可能变形，原始=1:1）";
+        TxtStatus.Text = $"画面适配：{FitName(next)}";
     }
 
     // ------------------------------------------------------------------ 动作

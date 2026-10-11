@@ -133,10 +133,17 @@ public partial class App : Application
                 "System" => FromSystemAccent(),
                 _ => Accents.TryGetValue(accent, out var pair) ? pair : Accents["Mint"],
             };
-            overlay["B.Accent"] = new System.Windows.Media.SolidColorBrush(
-                (System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(accentColor));
+            var color = (System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(accentColor);
+            overlay["B.Accent"] = new System.Windows.Media.SolidColorBrush(color);
             overlay["B.AccentText"] = new System.Windows.Media.SolidColorBrush(
                 (System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(textColor));
+            // 强调色的弱化版本：选中底色 / 描边 / 聚焦环都用它，改强调色时整套跟着变
+            overlay["B.AccentSoft"] = new System.Windows.Media.SolidColorBrush(
+                System.Windows.Media.Color.FromArgb(0x24, color.R, color.G, color.B));
+            overlay["B.AccentLine"] = new System.Windows.Media.SolidColorBrush(
+                System.Windows.Media.Color.FromArgb(0x70, color.R, color.G, color.B));
+            overlay["B.FocusRing"] = new System.Windows.Media.SolidColorBrush(
+                System.Windows.Media.Color.FromArgb(0x5A, color.R, color.G, color.B));
         }
         catch { }
         ThemeChanged?.Invoke();
