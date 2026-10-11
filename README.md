@@ -280,7 +280,7 @@ GENA 事件、媒体代理、VLC 解码、**Composition 渲染通道（与镜像
 │     ├─ VaultSetupWindow / VaultUnlockWindow / VaultBindWindow / VaultWindow / VaultChangePasswordWindow
 │     └─ MainWindow.xaml          单屏界面
 ├─ tests/CastReceiver.SelfTest/   命令行自检（另含 --vault-only、--diag-vlc、--verbose）
-├─ tools/uitest/                  界面压力测试与截图工具（另含 Invoke-VaultSmoke.ps1）
+├─ tools/uitest/                  界面压力测试与截图工具（另含 Invoke-VaultSmoke.ps1、Invoke-IntroPreviewTest.ps1）
 ├─ docs/                          界面截图 + 安全与隐私评估.md
 └─ 发布版/投屏Window/             可直接运行的发布产物
 ```
@@ -295,6 +295,7 @@ powershell -File tools\uitest\Invoke-VaultSmoke.ps1 -Exe "src\CastReceiver.App\b
 powershell -File tools\uitest\Capture-Window.ps1 -Exe "发布版\投屏Window\投屏Window.exe" -Out docs\ui-main.png -WaitSeconds 14
 powershell -File tools\uitest\Verify-AppearanceIcon.ps1 -Exe "发布版\投屏Window\投屏Window.exe"   # 顶栏「切换外观」图标可见性（深/浅两套主题各一张 + 顶栏放大图）
 powershell -File tools\uitest\Render-AppearanceIconPreview.ps1                                  # 不启动程序，直接离屏渲染该按钮的真实样式
+powershell -File tools\uitest\Invoke-IntroPreviewTest.ps1 -Exe "发布版\投屏Window\投屏Window.exe"  # 入场动画「预览」回归：连点两次，必须收场且界面放回（不能挂黑屏）
 ```
 
 > **截图注意（反截屏）**：主窗口默认开启「反截屏」（`AntiCapture`，`WDA_EXCLUDEFROMCAPTURE`），

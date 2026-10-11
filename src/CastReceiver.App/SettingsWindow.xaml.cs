@@ -485,26 +485,48 @@ public partial class SettingsWindow : Window
         box.SelectedIndex = 0;
     }
 
-    /// <summary>预览播完：把主窗口淡回来，并重新打开设置窗（方便接着调）。</summary>
-    private void OnIntroPreviewClosed()
+    /// <summary>
+    /// 预览播完（入场窗真的收场了）：把主窗口淡回来，并重新打开设置窗（方便接着调）。
+    /// 全程切到界面线程做：入场窗的 Closed 是在它自己的线程上抛出来的，
+    /// 在那里直接 Stop 定时器/改控件是跨线程操作（抛异常的话界面就永远放不回来了）。
+    /// </summary>
+    private void OnIntroPreviewClosed(int seq)
     {
+        if (seq != _previewSeq) return;      // 已经开了新的一轮预览，别拿旧的一轮去还原界面
         try
         {
-            StopPreviewGuard();
-            NativeIntroWindow.Closed -= OnIntroPreviewClosed;
             Dispatcher.BeginInvoke(new Action(() =>
             {
-                try
-                {
-                    if (Application.Current.MainWindow is MainWindow main) main.FinishIntroPreview();
-                    Show();
-                    BringToFrontAndFocus();
-                    TxtIntroHint.Text = "预览结束（界面已放回）";
-                }
-                catch { }
+                if (seq != _previewSeq) return;
+                ResetPreviewHooks();
+                RestoreUiAfterPreview("预览结束（界面已放回）");
             }));
         }
         catch { }
+    }
+
+    /// <summary>把界面从"预览独占"状态放回来（幂等）。</summary>
+    private void RestoreUiAfterPreview(string hint)
+    {
+        try
+        {
+            if (Application.Current.MainWindow is MainWindow main) main.FinishIntroPreview();
+            Show();
+            BringToFrontAndFocus();
+            TxtIntroHint.Text = hint;
+        }
+        catch { }
+    }
+
+    /// <summary>收掉这一轮预览的收尾钩子（看门狗 + Closed 订阅）。</summary>
+    private void ResetPreviewHooks()
+    {
+        StopPreviewGuard();
+        if (_previewClosed is not null)
+        {
+            try { NativeIntroWindow.Closed -= _previewClosed; } catch { }
+            _previewClosed = null;
+        }
     }
 
     private void StopPreviewGuard()
@@ -536,6 +558,12 @@ public partial class SettingsWindow : Window
     }
 
     private System.Windows.Threading.DispatcherTimer? _previewGuard;
+
+    /// <summary>本轮预览的 Closed 订阅（带代次校验，连点两次时旧的一轮回调不会来还原界面）。</summary>
+    private Action? _previewClosed;
+
+    /// <summary>预览轮次：每点一次 +1，旧轮次的回调/看门狗据此自动作废。</summary>
+    private int _previewSeq;
 
     /// <summary>当前下拉选择对应的设置值（内置 key 或 file:路径）。</summary>
     private string CurrentIntroSource()
@@ -571,11 +599,15 @@ public partial class SettingsWindow : Window
 
             // "等于重进一次"：把自己和主窗口都藏起来，让入场画面独占屏幕，播完再把界面放回来
             var main = Application.Current.MainWindow as MainWindow;
-            // 连点两次预览时，先把上一块画面收掉，避免两块置顶窗叠在一起谁也点不到
+
+            // 连点两次预览时：先把上一轮的看门狗/订阅收掉（旧窗收场时的回调会因为代次对不上而自动忽略），
+            // 再把它那块画面收掉，避免两块置顶窗叠在一起谁也点不到
+            ResetPreviewHooks();
             if (NativeIntroWindow.IsPlaying) NativeIntroWindow.ForceClose();
 
-            NativeIntroWindow.Closed -= OnIntroPreviewClosed;
-            NativeIntroWindow.Closed += OnIntroPreviewClosed;
+            int seq = ++_previewSeq;
+            _previewClosed = () => OnIntroPreviewClosed(seq);
+            NativeIntroWindow.Closed += _previewClosed;
             if (s.IntroPreviewReenter)
             {
                 main?.PrepareIntroPreview();
@@ -585,10 +617,9 @@ public partial class SettingsWindow : Window
             bool ok = NativeIntroWindow.Start(path, s.IntroStart, s.IntroEnd, s.IntroExtend, x, y, w, h, style);
             if (!ok)
             {
-                StopPreviewGuard();
-                NativeIntroWindow.Closed -= OnIntroPreviewClosed;
-                if (s.IntroPreviewReenter) { main?.FinishIntroPreview(); Show(); }
-                TxtIntroHint.Text = "预览没能起来（这条渲染路径在本机不可用）";
+                ResetPreviewHooks();
+                if (s.IntroPreviewReenter) RestoreUiAfterPreview("预览没能起来（这条渲染路径在本机不可用）");
+                else TxtIntroHint.Text = "预览没能起来（这条渲染路径在本机不可用）";
                 return;
             }
 
@@ -602,14 +633,12 @@ public partial class SettingsWindow : Window
             StopPreviewGuard();
             _previewGuard = new System.Windows.Threading.DispatcherTimer(TimeSpan.FromSeconds(guardSeconds), System.Windows.Threading.DispatcherPriority.Normal, (_, _) =>
             {
-                StopPreviewGuard();
+                if (seq != _previewSeq) return;      // 已经换了一轮预览，这条看门狗作废
+                ResetPreviewHooks();
                 try
                 {
                     NativeIntroWindow.ForceClose();
-                    if (Application.Current.MainWindow is MainWindow m) m.FinishIntroPreview();
-                    Show();
-                    BringToFrontAndFocus();
-                    TxtIntroHint.Text = "预览超时，已强制收场（界面已放回）";
+                    RestoreUiAfterPreview("预览超时，已强制收场（界面已放回）");
                 }
                 catch { }
             }, Dispatcher);

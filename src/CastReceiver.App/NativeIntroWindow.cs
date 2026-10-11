@@ -29,6 +29,7 @@ internal sealed class NativeIntroWindow
     private const int WsExTopmost = 0x00000008;
     private const int WsExToolWindow = 0x00000080;
     private const int SwShow = 5;
+    private const int SwHide = 0;
     private const int WmDestroy = 0x0002;
     private const int WmClose = 0x0010;
     private const int WmPaint = 0x000F;
@@ -48,6 +49,7 @@ internal sealed class NativeIntroWindow
     private const int TimerWatch = 1;                // 播放进度监视
     private const int TimerClose = 2;                // 淡出结束后关窗
     private const int TimerSelfCheck = 3;            // 起播自检（没出画就自己退场）
+    private const double UnknownDurationSeconds = 120;   // 素材时长还未知时的硬性期限基数（够长，不会误伤正常片子）
 
     [StructLayout(LayoutKind.Sequential)]
     private struct Rect { public int Left, Top, Right, Bottom; }
@@ -106,14 +108,55 @@ internal sealed class NativeIntroWindow
     [DllImport("gdi32.dll")] private static extern bool DeleteObject(IntPtr obj);
     [DllImport("user32.dll")] private static extern int FillRect(IntPtr hdc, ref Rect rect, IntPtr brush);
 
+    private const string ClassName = "CastReceiverIntroWindow";
+
     private static readonly object Gate = new();
     private static NativeIntroWindow? _current;
+    private static int _createdCount;   // 成功创建过几块入场画面（Start 用它判断"这次到底起没起来"）
+
+    // ------------------------------------------------------------------ 窗口类与窗口过程
+    //
+    // **必须是进程级静态的**：Win32 的窗口类按名字注册在进程上，第二次 RegisterClassW 必然
+    // 失败（类已存在），于是第二个（及以后每个）入场窗的消息会被派发到**第一个实例**的
+    // WndProc 上。第一个实例早已收场（_closed=true、_player=null），于是那些消息全成了空操作：
+    // 计时器不走、正片结束判据不判、淡出不触发、强制关闭也没有人处理 —— 屏幕上就永远挂着
+    // 一块黑窗，点它、关它都没反应。用户实测："预览结束之后挂个黑屏在这里，关又关不掉"。
+    // 现在改成静态窗口过程 + 句柄查表，每个入场窗都拿得到属于自己的消息。
+    private static readonly WndProcDelegate SharedProc = SharedWindowProc;   // 静态字段持有引用，避免被 GC
+    private static readonly object WindowGate = new();
+    private static readonly Dictionary<IntPtr, NativeIntroWindow> LiveWindows = new();
+    private static bool _classRegistered;
+
+    private static IntPtr SharedWindowProc(IntPtr hwnd, uint msg, IntPtr w, IntPtr l)
+    {
+        NativeIntroWindow? window;
+        lock (WindowGate) { LiveWindows.TryGetValue(hwnd, out window); }   // 出了锁再派发：处理器里会回调 Teardown 再拿这把锁
+        return window is not null ? window.WindowProc(hwnd, msg, w, l) : DefWindowProc(hwnd, msg, w, l);
+    }
+
+    /// <summary>注册窗口类（整个进程只注册一次，窗口过程是静态的）。</summary>
+    private static void EnsureClassRegistered()
+    {
+        lock (WindowGate)
+        {
+            if (_classRegistered) return;
+
+            WndClass wc = new()
+            {
+                WndProc = Marshal.GetFunctionPointerForDelegate(SharedProc),
+                Instance = GetModuleHandle(null),
+                ClassName = ClassName,
+                Background = CreateSolidBrush(0x000000),
+            };
+            RegisterClassW(ref wc);
+            _classRegistered = true;
+        }
+    }
 
     // "对齐到主窗口外框"的目标矩形（跨线程传值：写字段 + 发消息，不用指针）
     private static readonly object AlignGate = new();
     private static int _alignX, _alignY, _alignW, _alignH;
 
-    private readonly WndProcDelegate _proc;      // 必须持有引用，否则委托会被回收
     private IntPtr _hwnd;
     private Compositor? _compositor;
     private DesktopWindowTarget? _target;
@@ -123,6 +166,7 @@ internal sealed class NativeIntroWindow
     private CompositionSurfaceBrush? _brush;
     private MediaPlayerSurface? _surface;
     private MediaPlayer? _player;
+    private double _startSeconds;
     private double _endSeconds;
     private double _extendSeconds;        // 正片放完后额外展示这么久（停在最后一帧）
     private double _extendFrom = -1;      // 延长段的起点（秒表时刻）
@@ -140,8 +184,9 @@ internal sealed class NativeIntroWindow
     private double _hardDeadline = -1;     // 硬性期限（秒，相对秒表）：到点无条件收场
     private int _stalledFor;
     private bool _closed;
+    private readonly object _teardownGate = new();   // 收场只能做一次（消息/计时器/看门狗都可能来叫）
 
-    private NativeIntroWindow() => _proc = WindowProc;
+    private NativeIntroWindow() { }
 
     /// <summary>正在放（主窗口据此决定"还要不要自己再放一遍遮罩动画"）。</summary>
     public static bool IsPlaying
@@ -172,6 +217,7 @@ internal sealed class NativeIntroWindow
 
         try
         {
+            int before = Volatile.Read(ref _createdCount);
             using var shown = new ManualResetEventSlim(false);
             var thread = new Thread(() =>
             {
@@ -199,7 +245,10 @@ internal sealed class NativeIntroWindow
             thread.Start();
 
             shown.Wait(TimeSpan.FromSeconds(3));
-            return IsPlaying;
+            // 用"这次到底创建成功没有"判断，而不是 IsPlaying：
+            // 素材很短时窗口可能在 Start 返回之前就已经正常收场了，那时 IsPlaying 是 false，
+            // 但绝不能把它当成"预览没能起来"（那样会把刚放完的界面又"恢复"一次）。
+            return Volatile.Read(ref _createdCount) > before;
         }
         catch (Exception ex)
         {
@@ -236,27 +285,45 @@ internal sealed class NativeIntroWindow
 
     private static readonly Style DefaultStyle = new("fill", 0.5, 0.5, 0.85, 760, 880, true);
 
+    /// <summary>
+    /// 跑完一辈子：建窗 → 起播 → 消息循环 → 收场。
+    /// **无论中间哪一步抛异常，窗口都必须收掉**：这里创建出来的是置顶窗，
+    /// 一旦初始化中途失败又没人销毁，屏幕上就多一块谁也点不动、关不掉的黑窗
+    /// （Composition 不可用等情况下真实存在这条路径）。
+    /// </summary>
     private void Run(string videoPath, double startSeconds, double endSeconds, double extendSeconds,
         int x, int y, int width, int height, Style style, ManualResetEventSlim shown)
     {
+        try
+        {
+            RunCore(videoPath, startSeconds, endSeconds, extendSeconds, x, y, width, height, style, shown);
+        }
+        catch (Exception ex)
+        {
+            Bootstrap.Log("入场动画初始化/播放失败，直接收场：" + ex.Message);
+        }
+        finally
+        {
+            CloseNow();
+        }
+    }
+
+    private void RunCore(string videoPath, double startSeconds, double endSeconds, double extendSeconds,
+        int x, int y, int width, int height, Style style, ManualResetEventSlim shown)
+    {
+        _startSeconds = Math.Max(0, startSeconds);
         _endSeconds = endSeconds;
         _extendSeconds = extendSeconds;
         _style = style ?? DefaultStyle;
         Bootstrap.Log($"入场动画参数：起始={startSeconds:F1}s 结束={endSeconds:F1}s 延长={extendSeconds:F1}s " +
                       $"填充={_style.Stretch} 音量={_style.Volume:F2} 进={_style.FadeInMs}ms 出={_style.FadeOutMs}ms");
 
-        WndClass wc = new()
-        {
-            WndProc = Marshal.GetFunctionPointerForDelegate(_proc),
-            Instance = GetModuleHandle(null),
-            ClassName = "CastReceiverIntroWindow",
-            Background = CreateSolidBrush(0x000000),
-        };
-        RegisterClassW(ref wc);
-
-        _hwnd = CreateWindowEx(WsExTopmost | WsExToolWindow | WsExNoActivate, wc.ClassName!, "投屏Window",
-            WsPopup, x, y, width, height, IntPtr.Zero, IntPtr.Zero, wc.Instance, IntPtr.Zero);
+        EnsureClassRegistered();
+        _hwnd = CreateWindowEx(WsExTopmost | WsExToolWindow | WsExNoActivate, ClassName, "投屏Window",
+            WsPopup, x, y, width, height, IntPtr.Zero, IntPtr.Zero, GetModuleHandle(null), IntPtr.Zero);
         if (_hwnd == IntPtr.Zero) throw new InvalidOperationException("入场动画窗口创建失败");
+        lock (WindowGate) { LiveWindows[_hwnd] = this; }     // 赶在显示之前登记：消息从这里开始就必须找得到我
+        Interlocked.Increment(ref _createdCount);
 
         CoreMessaging.EnsureDispatcherQueue();
         _compositor = new Compositor();
@@ -294,6 +361,8 @@ internal sealed class NativeIntroWindow
                 double end = _endSeconds > 0.05 ? _endSeconds : total;
                 _expectedEnd = Math.Max(1.0, end - startSeconds);
                 _clock.Restart();
+                // 硬性期限到这里才能算准（见 WatchProgress 里的说明）
+                _hardDeadline = _expectedEnd + Math.Max(0, _extendSeconds) + 8.0;
                 Bootstrap.Log($"原生入场动画已出画：{_player.PlaybackSession.NaturalVideoWidth}×" +
                               $"{_player.PlaybackSession.NaturalVideoHeight}，从 {startSeconds:F1}s 起");
             }
@@ -381,8 +450,7 @@ internal sealed class NativeIntroWindow
             DispatchMessage(ref msg);
             if (msg.Message == WmDestroy || msg.Message == WmClose) break;
         }
-
-        CloseNow();
+        // 收场由外层 Run 的 finally 统一做（它保证异常路径也收）
     }
 
     /// <summary>
@@ -457,6 +525,18 @@ internal sealed class NativeIntroWindow
                 RequestFinish();
                 return IntPtr.Zero;
 
+            case WmAppHardClose:
+                // 看门狗 / 界面自愈喊的"立刻收场"。这个 case 以前**根本不存在**，
+                // 所以 ForceClose() post 出去的消息被 DefWindowProc 直接丢掉 —— 强制关闭是空操作。
+                Bootstrap.Log("入场动画收到强制收场请求，立刻销毁窗口");
+                Teardown("强制收场");
+                return IntPtr.Zero;
+
+            case WmClose:
+                // 兜底（ForceClose 会同时发这一条）：销毁窗口同样能走到收场
+                Teardown("收到关闭消息");
+                return IntPtr.Zero;
+
             case WmAppAlign:
             {
                 int ax, ay, aw, ah;
@@ -470,7 +550,7 @@ internal sealed class NativeIntroWindow
 
             case WmTimer:
                 if (w.ToInt64() == TimerWatch) WatchProgress();
-                else if (w.ToInt64() == TimerClose) { KillTimer(hwnd, TimerClose); DestroyWindow(hwnd); }
+                else if (w.ToInt64() == TimerClose) { KillTimer(hwnd, TimerClose); Teardown("淡出结束"); }
                 else if (w.ToInt64() == TimerSelfCheck)
                 {
                     KillTimer(hwnd, TimerSelfCheck);
@@ -578,12 +658,21 @@ internal sealed class NativeIntroWindow
         // 这是最后一道防线：无论播放器、事件、动画出什么问题，窗口都必须离开。
         if (!_closed)
         {
-            double deadline = _expectedEnd + _extendSeconds + 8.0;
-            if (_hardDeadline <= 0) _hardDeadline = deadline;
+            // 期限绝不能在 MediaOpened 之前就用 _expectedEnd（那时还是 -1）算：
+            // -1 + 0 + 8 会得出一个 7 秒的假期限，正常片子放到 7.8 秒就被判"超期"强制收场
+            // （用户设的是 0→27.9 秒，实测日志里 7844ms 就被收掉了）。
+            if (_hardDeadline <= 0)
+            {
+                double expected = _expectedEnd > 0
+                    ? _expectedEnd
+                    : (_endSeconds > 0.05 ? Math.Max(1.0, _endSeconds - _startSeconds) : UnknownDurationSeconds);
+                _hardDeadline = expected + Math.Max(0, _extendSeconds) + 8.0;
+            }
+
             if (_clock.Elapsed.TotalSeconds > _hardDeadline + 6.0)
             {
                 Bootstrap.Log("入场动画超过硬性期限，直接销毁窗口");
-                DestroyNow();
+                Teardown("超过硬性期限");
             }
             else if (_clock.Elapsed.TotalSeconds > _hardDeadline && !_videoEnded)
             {
@@ -595,14 +684,64 @@ internal sealed class NativeIntroWindow
         }
     }
 
-    /// <summary>立刻销毁窗口并通知 Closed（任何异常都不能拦住它）。</summary>
-    private void DestroyNow()
+    /// <summary>
+    /// 唯一的收场出口：销毁窗口、释放播放器与合成器、通知 Closed。
+    /// **必须幂等**（淡出计时器、强制收场消息、消息循环结束都会来叫），
+    /// 也必须**不依赖窗口线程还在正常跑**——所以它自己 DestroyWindow，而不是等别人。
+    /// </summary>
+    private void Teardown(string reason)
     {
-        try { _closed = true; } catch { }
-        try { if (_hwnd != IntPtr.Zero) { KillTimer(_hwnd, TimerWatch); DestroyWindow(_hwnd); } } catch { }
+        lock (_teardownGate)
+        {
+            if (_closed) return;
+            _closed = true;
+        }
+
+        IntPtr hwnd = _hwnd;
+        _hwnd = IntPtr.Zero;
+        if (hwnd != IntPtr.Zero)
+        {
+            lock (WindowGate) { LiveWindows.Remove(hwnd); }
+            try { KillTimer(hwnd, TimerWatch); } catch { }
+            try { KillTimer(hwnd, TimerClose); } catch { }
+            try { KillTimer(hwnd, TimerSelfCheck); } catch { }
+        }
+
+        try { _player?.Pause(); } catch { }
+        try { _player?.Dispose(); } catch { }
+        _player = null;
+        try { _surface?.Dispose(); } catch { }
+        _surface = null;
+        _brush = null;
+        try { _target?.Dispose(); } catch { }
+        _target = null;
+        _root = null;
+        _visual = null;
+        _flash = null;
+        try { _compositor?.Dispose(); } catch { }
+        _compositor = null;
+
+        if (hwnd != IntPtr.Zero)
+        {
+            try { DestroyWindow(hwnd); } catch { }
+        }
+
+        Bootstrap.Log($"原生入场动画已收场（{reason}）");
         try { Closed?.Invoke(); } catch { }
     }
-    /// <summary>不等淡出，直接销毁窗口（最后一道保险；可从任意线程调用）。</summary>
+
+    /// <summary>消息循环退出后的收尾（正常情况下前面已经收过场，这里是幂等兜底）。</summary>
+    private void CloseNow() => Teardown("消息循环结束");
+
+    /// <summary>
+    /// 最后一道保险：不等淡出、不管播放器状态，立刻收掉这块画面（幂等，可从任意线程调用）。
+    /// 做法是**三件事一起做**，因为其中任何一件都可能失败：
+    ///   ① 跨线程 ShowWindow(SW_HIDE) —— 这个调用不要求窗口线程配合，立刻就不挡人了；
+    ///   ② PostMessage(WM_APP+3) —— 让入场窗线程自己走正规收场（释放播放器/合成器）；
+    ///   ③ PostMessage(WM_CLOSE) —— 兜底：万一那条自定义消息被漏掉，销毁窗口同样能收场。
+    /// 之前只 post 了 ②，而窗口过程里**根本没有这个 case**，于是"强制销毁"什么都没做，
+    /// 定时器每 4 秒喊一次也永远喊不掉那块黑窗。
+    /// </summary>
     public static void ForceClose()
     {
         NativeIntroWindow? window;
@@ -610,7 +749,11 @@ internal sealed class NativeIntroWindow
         if (window is null) return;
 
         IntPtr hwnd = window._hwnd;
-        if (hwnd != IntPtr.Zero) PostMessage(hwnd, WmAppHardClose, IntPtr.Zero, IntPtr.Zero);
+        if (hwnd == IntPtr.Zero) return;
+
+        try { ShowWindow(hwnd, SwHide); } catch { }
+        try { PostMessage(hwnd, WmAppHardClose, IntPtr.Zero, IntPtr.Zero); } catch { }
+        try { PostMessage(hwnd, WmClose, IntPtr.Zero, IntPtr.Zero); } catch { }
     }
     /// <summary>主窗口说"我已经就绪了"：片子也放完（或用户已跳过）就立刻收场，否则停在最后一帧等。</summary>
     private void RequestFinish()
@@ -673,31 +816,5 @@ internal sealed class NativeIntroWindow
         catch { }
 
         SetTimer(_hwnd, TimerClose, (uint)Math.Clamp(_style.FadeOutMs + 40, 200, 5200), IntPtr.Zero);
-    }
-
-    private void CloseNow()
-    {
-        if (_closed) return;
-        _closed = true;
-
-        try { KillTimer(_hwnd, TimerWatch); } catch { }
-        try { _player?.Pause(); } catch { }
-        try { _player?.Dispose(); } catch { }
-        _player = null;
-        try { _target?.Dispose(); } catch { }
-        _target = null;
-        _root = null;
-        _visual = null;
-        try { _compositor?.Dispose(); } catch { }
-        _compositor = null;
-
-        if (_hwnd != IntPtr.Zero)
-        {
-            DestroyWindow(_hwnd);
-            _hwnd = IntPtr.Zero;
-        }
-
-        Bootstrap.Log("原生入场动画已收场");
-        try { Closed?.Invoke(); } catch { }
     }
 }

@@ -1069,6 +1069,12 @@ public partial class MainWindow : Window
     /// <summary>正在收场（避免重复触发）。</summary>
     private bool _introLeaving;
 
+    /// <summary>设置里点了"预览"：这块画面由预览流程负责，界面交接定时器不许插手。</summary>
+    private bool _introPreviewActive;
+
+    /// <summary>启动交接定时器（一次性：把界面从入场动画手里接回来）。</summary>
+    private DispatcherTimer? _introHandoff;
+
     /// <summary>动画放完了但程序还没准备好：先停住等。</summary>
     private bool _introWaiting;
 
@@ -1106,6 +1112,13 @@ public partial class MainWindow : Window
     {
         try
         {
+            // 启动那一次的"界面交接"定时器必须取消：它原本每 800ms 就跑一次，
+            // 会把预览刚设好的 _introNative 又抹成 false、还把控制条显示出来，
+            // 于是界面自愈巡检以为"界面已恢复"，每 4 秒去强制销毁一次预览窗（打成一团）。
+            _introHandoff?.Stop();
+            _introHandoff = null;
+
+            _introPreviewActive = true;
             _introNative = true;
             Opacity = 0;
             try { _bar?.Hide(); } catch { }
@@ -1136,6 +1149,7 @@ public partial class MainWindow : Window
         {
             _previewGuard?.Stop();
             _previewGuard = null;
+            _introPreviewActive = false;
             _introNative = false;
             FadeInWindow();
             Opacity = 1;                 // 兜底：不管淡入动画是否被打断，都必须看得见
@@ -1151,7 +1165,7 @@ public partial class MainWindow : Window
     {
         try
         {
-            if (_introNative || !NativeIntroWindow.IsPlaying) return;
+            if (_introNative || _introPreviewActive || !NativeIntroWindow.IsPlaying) return;
             _host.Log.Warn("startup", "发现残留的入场窗（界面已恢复），强制销毁");
             NativeIntroWindow.ForceClose();
         }
@@ -1410,13 +1424,23 @@ public partial class MainWindow : Window
         if (_introNative)
         {
             NativeIntroWindow.Finish();
-            var timer = new DispatcherTimer(TimeSpan.FromMilliseconds(800), DispatcherPriority.Normal, (_, _) =>
+            // **一次性**定时器：交给界面后就把自己停掉。
+            // 以前这个 DispatcherTimer 从不 Stop，于是每 800ms 都会把 _introNative 抹成 false、
+            // 顺手把控制条显示出来 —— 预览期间它会把预览状态一起冲掉（界面上就是"黑屏还在、
+            // 巡检以为自己该去销毁它"）。实测日志：预览开始 4 秒后开始每 4 秒刷一条"发现残留的入场窗"。
+            var timer = new DispatcherTimer(TimeSpan.FromMilliseconds(800), DispatcherPriority.Normal, null!, Dispatcher);
+            timer.Tick += (_, _) =>
             {
+                timer.Stop();
+                if (ReferenceEquals(_introHandoff, timer)) _introHandoff = null;
+                if (_introPreviewActive) return;      // 这期间是预览在做主，别去动它的状态
+
                 _introNative = false;
                 ApplyStageVisibility();
                 if (_barPendingIntro) { _barPendingIntro = false; ShowBar(); }
                 if (_pendingTutorial) { _pendingTutorial = false; MaybeShowTutorial(); }
-            }, Dispatcher);
+            };
+            _introHandoff = timer;
             timer.Start();
             return;
         }
