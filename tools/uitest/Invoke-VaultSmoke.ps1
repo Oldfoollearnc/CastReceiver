@@ -110,7 +110,7 @@ $logPath = Join-Path $env:LOCALAPPDATA "CastReceiver\castreceiver.log"
 $logLinesAtStart = if (Test-Path $logPath) { (Get-Content $logPath -Encoding UTF8 | Measure-Object -Line).Lines } else { 0 }
 
 Write-Step "启动程序（隔离实例）"
-$p = Start-Process -FilePath $Exe -ArgumentList @("--vault-root", $VaultRoot, "--instance-suffix", "smoke") -PassThru
+$p = Start-Process -FilePath $Exe -ArgumentList "--no-intro --vault-root `"$VaultRoot`" --instance-suffix smoke" -PassThru
 Start-Sleep -Seconds $StartupWaitSeconds
 
 $main = Find-Window $p.Id "投屏Window"

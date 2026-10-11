@@ -135,7 +135,7 @@ if (-not $SettingsRoot) {
 $InstanceSuffix = "dsh-verify"      # 避免与正在运行的实例抢单例
 
 if (-not (Test-Path $OutDir)) { New-Item -ItemType Directory -Path $OutDir | Out-Null }
-$spArgs = @('--settings-root "{0}"' -f $SettingsRoot, '--instance-suffix "{0}"' -f $InstanceSuffix)
+$spArgs = @('--no-intro', '--settings-root "{0}"' -f $SettingsRoot, '--instance-suffix "{0}"' -f $InstanceSuffix)
 $p = Start-Process -FilePath $Exe -WorkingDirectory (Split-Path $Exe) -ArgumentList ($spArgs -join ' ') -PassThru
 Write-Host "已启动，等待 $StartupWaitSeconds 秒…"
 Start-Sleep -Seconds $StartupWaitSeconds

@@ -104,7 +104,7 @@ $logPath = Join-Path $env:LOCALAPPDATA "CastReceiver\castreceiver.log"
 $logLinesAtStart = if (Test-Path $logPath) { (Get-Content $logPath -Encoding UTF8 | Measure-Object -Line).Lines } else { 0 }
 
 Write-Step "启动程序（演示投屏 + 隔离库）"
-$p = Start-Process -FilePath $Exe -ArgumentList @("--demo-cast", "--vault-root", $VaultRoot, "--instance-suffix", "recsmoke") -PassThru
+$p = Start-Process -FilePath $Exe -ArgumentList "--no-intro --demo-cast --vault-root `"$VaultRoot`" --instance-suffix recsmoke" -PassThru
 Start-Sleep -Seconds $StartupWaitSeconds
 
 $main = Find-Window $p.Id "投屏Window"

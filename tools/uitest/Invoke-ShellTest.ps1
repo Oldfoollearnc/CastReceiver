@@ -28,7 +28,7 @@ function Rect-Of($win) {
     return "{0},{1} {2}x{3}" -f [int]$r.X, [int]$r.Y, [int]$r.Width, [int]$r.Height
 }
 
-$p = Start-Process -FilePath $Exe -PassThru
+$p = Start-Process -FilePath $Exe -ArgumentList "--no-intro" -PassThru
 Write-Host "已启动，等待 $StartupWaitSeconds 秒…"
 Start-Sleep -Seconds $StartupWaitSeconds
 

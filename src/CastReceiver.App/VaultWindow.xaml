@@ -8,22 +8,22 @@
         WindowStyle="None" ResizeMode="CanResize" UseLayoutRounding="True" ShowInTaskbar="False">
 
     <shell:WindowChrome.WindowChrome>
-        <shell:WindowChrome CaptionHeight="46" ResizeBorderThickness="6" GlassFrameThickness="0"
+        <shell:WindowChrome CaptionHeight="48" ResizeBorderThickness="6" GlassFrameThickness="0"
                             CornerRadius="0" UseAeroCaptionButtons="False" />
     </shell:WindowChrome.WindowChrome>
 
     <Border Background="{DynamicResource B.Bg}" BorderBrush="{DynamicResource B.Line}" BorderThickness="1">
         <Grid>
             <Grid.RowDefinitions>
-                <RowDefinition x:Name="RowHeader" Height="46" />
+                <RowDefinition x:Name="RowHeader" Height="48" />
                 <RowDefinition Height="*" />
-                <RowDefinition x:Name="RowFooter" Height="30" />
+                <RowDefinition x:Name="RowFooter" Height="34" />
             </Grid.RowDefinitions>
 
             <!-- 顶栏 -->
             <Grid x:Name="Header" Grid.Row="0">
                 <StackPanel Orientation="Horizontal" Margin="20,0,0,0" VerticalAlignment="Center">
-                    <TextBlock Text="我的库" FontSize="13.5" FontWeight="SemiBold" VerticalAlignment="Center" />
+                    <TextBlock Text="我的库" Style="{DynamicResource S.H1}" VerticalAlignment="Center" />
                     <TextBlock x:Name="TxtAccount" FontSize="12" Foreground="{DynamicResource B.TextDim}"
                                Margin="10,0,0,0" VerticalAlignment="Center" />
                     <TextBlock x:Name="TxtUnlocked" FontSize="11.5" Foreground="{DynamicResource B.Ok}"
@@ -37,7 +37,7 @@
                             Margin="0,0,8,0" Click="BtnClear_Click" />
                     <Button x:Name="BtnLock" Content="锁定" Style="{DynamicResource S.Btn}" Padding="12,6" FontSize="12"
                             Margin="0,0,8,0" Click="BtnLock_Click" ToolTip="立即清除内存中的密钥并关闭库" />
-                    <Button Content="&#xE8BB;" Style="{DynamicResource S.BtnIcon}" Click="BtnClose_Click"
+                    <Button Content="&#xE8BB;" Style="{DynamicResource S.BtnClose}" Click="BtnClose_Click"
                             AutomationProperties.Name="关闭" ToolTip="关闭并锁定（Esc）" />
                 </StackPanel>
             </Grid>
@@ -147,6 +147,7 @@
 
             <!-- 底栏 -->
             <Grid x:Name="Footer" Grid.Row="2" Margin="16,0">
+                <Border VerticalAlignment="Top" Height="1" Background="{DynamicResource B.LineSoft}" Margin="-16,0,-16,0" />
                 <TextBlock x:Name="TxtStatus" FontSize="11.5" Foreground="{DynamicResource B.TextFaint}"
                            VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
                 <TextBlock x:Name="TxtHint" FontSize="11.5" Foreground="{DynamicResource B.TextFaint}"

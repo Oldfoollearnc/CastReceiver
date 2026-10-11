@@ -8,27 +8,14 @@
         WindowStyle="None" ResizeMode="NoResize" UseLayoutRounding="True" ShowInTaskbar="False">
 
     <shell:WindowChrome.WindowChrome>
-        <shell:WindowChrome CaptionHeight="46" ResizeBorderThickness="0" GlassFrameThickness="0"
+        <shell:WindowChrome CaptionHeight="48" ResizeBorderThickness="0" GlassFrameThickness="0"
                             CornerRadius="0" UseAeroCaptionButtons="False" />
     </shell:WindowChrome.WindowChrome>
-
-    <Window.Resources>
-        <Style x:Key="S.Input" TargetType="Control">
-            <Setter Property="Height" Value="38" />
-            <Setter Property="FontSize" Value="13" />
-            <Setter Property="Padding" Value="10,0" />
-            <Setter Property="Foreground" Value="{DynamicResource B.Text}" />
-            <Setter Property="Background" Value="{DynamicResource B.SurfaceHi}" />
-            <Setter Property="BorderBrush" Value="{DynamicResource B.Line}" />
-            <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="VerticalContentAlignment" Value="Center" />
-        </Style>
-    </Window.Resources>
 
     <Border Background="{DynamicResource B.Bg}" BorderBrush="{DynamicResource B.Line}" BorderThickness="1">
         <Grid>
             <Grid.RowDefinitions>
-                <RowDefinition Height="46" />
+                <RowDefinition Height="48" />
                 <RowDefinition Height="*" />
                 <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
@@ -37,9 +24,9 @@
                 <StackPanel Orientation="Horizontal" Margin="20,0,0,0" VerticalAlignment="Center">
                     <Path Width="15" Height="15" Stretch="Uniform" Fill="{DynamicResource B.TextDim}" VerticalAlignment="Center"
                           Data="M10,2 A8,8 0 1 1 9.99,2 Z M9,5.5 H11 V11 H9 Z M9,12.5 H11 V14.5 H9 Z" />
-                    <TextBlock Text="创建加密账号" FontSize="13.5" FontWeight="SemiBold" Margin="9,0,0,0" VerticalAlignment="Center" />
+                    <TextBlock Text="创建加密账号" Style="{DynamicResource S.H1}" Margin="9,0,0,0" VerticalAlignment="Center" />
                 </StackPanel>
-                <Button Content="&#xE8BB;" Style="{DynamicResource S.BtnIcon}" HorizontalAlignment="Right" Margin="0,0,10,0"
+                <Button Content="&#xE8BB;" Style="{DynamicResource S.BtnClose}" HorizontalAlignment="Right" Margin="0,0,8,0"
                         Click="BtnCancel_Click" shell:WindowChrome.IsHitTestVisibleInChrome="True"
                         AutomationProperties.Name="关闭" ToolTip="关闭（Esc）" />
             </Grid>
@@ -47,25 +34,23 @@
             <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Padding="26,4,26,0">
                 <StackPanel>
                     <TextBlock x:Name="TxtIntro" FontSize="12" Foreground="{DynamicResource B.TextDim}" TextWrapping="Wrap" LineHeight="19"
-                               Text="截图与录像会加密保存到本机，只有用这个账号的密码才能查看。投屏与录制本身不需要输密码。" />
+                               Text="截图与录像加密保存在本机，只有这个账号的密码能查看。" />
 
                     <!-- 账号名 -->
                     <TextBlock Text="账号名" FontSize="12" Foreground="{DynamicResource B.TextFaint}" Margin="0,20,0,0" />
                     <Grid Margin="0,7,0,0">
-                        <TextBox x:Name="TxtUser" Style="{StaticResource S.Input}" AutomationProperties.Name="账号名"
-                                 Background="{DynamicResource B.SurfaceHi}" BorderBrush="{DynamicResource B.Line}"
+                        <TextBox x:Name="TxtUser" Style="{StaticResource S.Field}" AutomationProperties.Name="账号名"
                                  CaretBrush="{DynamicResource B.Text}" TextChanged="User_TextChanged" />
                         <TextBlock x:Name="PhUser" Text="例如：我的账号" FontSize="13" Foreground="{DynamicResource B.TextFaint}"
                                    Margin="12,0,0,0" VerticalAlignment="Center" IsHitTestVisible="False" />
                     </Grid>
-                    <TextBlock Text="2–32 个字符。名字只保存在本机（受 Windows 账户保护），不会上传。" FontSize="11"
+                    <TextBlock Text="2–32 个字符，只保存在本机。" FontSize="11"
                                Foreground="{DynamicResource B.TextFaint}" Margin="0,6,0,0" TextWrapping="Wrap" />
 
                     <!-- 密码 -->
                     <TextBlock Text="密码" FontSize="12" Foreground="{DynamicResource B.TextFaint}" Margin="0,16,0,0" />
                     <Grid Margin="0,7,0,0">
-                        <PasswordBox x:Name="TxtPassword" Style="{StaticResource S.Input}" AutomationProperties.Name="密码"
-                                     Background="{DynamicResource B.SurfaceHi}" BorderBrush="{DynamicResource B.Line}"
+                        <PasswordBox x:Name="TxtPassword" Style="{StaticResource S.FieldPwd}" AutomationProperties.Name="密码"
                                      CaretBrush="{DynamicResource B.Text}" PasswordChar="●"
                                      PasswordChanged="Password_Changed" />
                         <TextBlock x:Name="PhPassword" Text="至少 8 位，含字母和数字" FontSize="13" Foreground="{DynamicResource B.TextFaint}"
@@ -91,8 +76,7 @@
                     <!-- 确认密码 -->
                     <TextBlock Text="再输一次" FontSize="12" Foreground="{DynamicResource B.TextFaint}" Margin="0,16,0,0" />
                     <Grid Margin="0,7,0,0">
-                        <PasswordBox x:Name="TxtConfirm" Style="{StaticResource S.Input}" AutomationProperties.Name="再次输入密码"
-                                     Background="{DynamicResource B.SurfaceHi}" BorderBrush="{DynamicResource B.Line}"
+                        <PasswordBox x:Name="TxtConfirm" Style="{StaticResource S.FieldPwd}" AutomationProperties.Name="再次输入密码"
                                      CaretBrush="{DynamicResource B.Text}" PasswordChar="●"
                                      PasswordChanged="Password_Changed" />
                         <TextBlock x:Name="PhConfirm" Text="再输一次密码" FontSize="13" Foreground="{DynamicResource B.TextFaint}"
@@ -107,7 +91,7 @@
                             <StackPanel Margin="10,0,0,0">
                                 <TextBlock Text="请务必记住这个密码" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource B.Warn}" />
                                 <TextBlock FontSize="11.5" Foreground="{DynamicResource B.TextDim}" TextWrapping="Wrap" Margin="0,5,0,0" LineHeight="18"
-                                           Text="密码不会保存在任何地方，也没有找回功能：忘记密码就只能删除该账号并清空它名下的全部截图与录像。建议记到你的密码管理器里。" />
+                                           Text="密码不保存、也找不回：忘记只能删号并清空内容。建议记进密码管理器。" />
                             </StackPanel>
                         </StackPanel>
                     </Border>

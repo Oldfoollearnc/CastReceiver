@@ -8,28 +8,14 @@
         WindowStyle="None" ResizeMode="NoResize" UseLayoutRounding="True" ShowInTaskbar="False">
 
     <shell:WindowChrome.WindowChrome>
-        <shell:WindowChrome CaptionHeight="46" ResizeBorderThickness="0" GlassFrameThickness="0"
+        <shell:WindowChrome CaptionHeight="48" ResizeBorderThickness="0" GlassFrameThickness="0"
                             CornerRadius="0" UseAeroCaptionButtons="False" />
     </shell:WindowChrome.WindowChrome>
-
-    <Window.Resources>
-        <!-- 输入框：统一高度、圆角、聚焦时用强调色描边 -->
-        <Style x:Key="S.Input" TargetType="Control">
-            <Setter Property="Height" Value="38" />
-            <Setter Property="FontSize" Value="13" />
-            <Setter Property="Padding" Value="10,0" />
-            <Setter Property="Foreground" Value="{DynamicResource B.Text}" />
-            <Setter Property="Background" Value="{DynamicResource B.SurfaceHi}" />
-            <Setter Property="BorderBrush" Value="{DynamicResource B.Line}" />
-            <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="VerticalContentAlignment" Value="Center" />
-        </Style>
-    </Window.Resources>
 
     <Border Background="{DynamicResource B.Bg}" BorderBrush="{DynamicResource B.Line}" BorderThickness="1">
         <Grid>
             <Grid.RowDefinitions>
-                <RowDefinition Height="46" />
+                <RowDefinition Height="48" />
                 <RowDefinition Height="*" />
                 <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
@@ -39,9 +25,9 @@
                 <StackPanel Orientation="Horizontal" Margin="20,0,0,0" VerticalAlignment="Center">
                     <Path Width="14" Height="16" Stretch="Uniform" Fill="{DynamicResource B.TextDim}" VerticalAlignment="Center"
                           Data="M6,7 V5 A4,4 0 0 1 14,5 V7 H15.5 A1,1 0 0 1 16.5,8 V17 A1,1 0 0 1 15.5,18 H4.5 A1,1 0 0 1 3.5,17 V8 A1,1 0 0 1 4.5,7 Z M8,7 H12 V5 A2,2 0 0 0 8,5 Z" />
-                    <TextBlock Text="解锁我的库" FontSize="13.5" FontWeight="SemiBold" Margin="9,0,0,0" VerticalAlignment="Center" />
+                    <TextBlock Text="解锁我的库" Style="{DynamicResource S.H1}" Margin="9,0,0,0" VerticalAlignment="Center" />
                 </StackPanel>
-                <Button Content="&#xE8BB;" Style="{DynamicResource S.BtnIcon}" HorizontalAlignment="Right" Margin="0,0,10,0"
+                <Button Content="&#xE8BB;" Style="{DynamicResource S.BtnClose}" HorizontalAlignment="Right" Margin="0,0,8,0"
                         Click="BtnCancel_Click" shell:WindowChrome.IsHitTestVisibleInChrome="True"
                         AutomationProperties.Name="关闭" ToolTip="关闭（Esc）" />
             </Grid>
@@ -49,7 +35,7 @@
             <!-- 内容 -->
             <StackPanel Grid.Row="1" Margin="26,4,26,0">
                 <TextBlock FontSize="12" Foreground="{DynamicResource B.TextDim}" TextWrapping="Wrap" LineHeight="19"
-                           Text="查看截图与录像需要验证密码。密码只用于解开这台电脑上的加密内容，不会上传到任何地方。" />
+                           Text="查看截图与录像需验证密码；密码只在本机使用，不会上传。" />
 
                 <!-- 账号 -->
                 <TextBlock Text="账号" FontSize="12" Foreground="{DynamicResource B.TextFaint}" Margin="0,20,0,0" />
@@ -71,13 +57,12 @@
                               BorderBrush="{DynamicResource B.Line}" />
                 </Grid>
                 <TextBlock x:Name="TxtAccountHint" FontSize="11" Foreground="{DynamicResource B.TextFaint}" Margin="0,6,0,0"
-                           TextWrapping="Wrap" Text="这是你创建账号时设置的账号名。" />
+                           TextWrapping="Wrap" Text="创建账号时设置的名字。" />
 
                 <!-- 密码 -->
                 <TextBlock Text="密码" FontSize="12" Foreground="{DynamicResource B.TextFaint}" Margin="0,16,0,0" />
                 <Grid Margin="0,7,0,0">
-                    <PasswordBox x:Name="TxtPassword" Style="{StaticResource S.Input}" AutomationProperties.Name="解锁密码"
-                                 Background="{DynamicResource B.SurfaceHi}" BorderBrush="{DynamicResource B.Line}"
+                    <PasswordBox x:Name="TxtPassword" Style="{StaticResource S.FieldPwd}" AutomationProperties.Name="解锁密码"
                                  CaretBrush="{DynamicResource B.Text}" PasswordChar="●"
                                  PasswordChanged="Password_Changed" KeyDown="Password_KeyDown" />
                     <TextBlock x:Name="PhPassword" Text="输入密码" FontSize="13" Foreground="{DynamicResource B.TextFaint}"
@@ -108,7 +93,7 @@
             <!-- 底栏 -->
             <Grid Grid.Row="2" Margin="26,16,26,20">
                 <TextBlock FontSize="11" Foreground="{DynamicResource B.TextFaint}" VerticalAlignment="Center"
-                           Text="提示：Ctrl+Alt+L 可随时上锁" />
+                           Text="Ctrl+Alt+L 可随时上锁" />
                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
                     <Button Content="取消" Style="{DynamicResource S.Btn}" Padding="18,8" FontSize="12.5" Click="BtnCancel_Click" />
                     <Button x:Name="BtnUnlock" Content="解锁" Style="{DynamicResource S.BtnPrimary}" Padding="24,8" FontSize="12.5"

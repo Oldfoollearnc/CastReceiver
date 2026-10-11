@@ -40,7 +40,7 @@ function Set-Switch($win, [string]$name, [bool]$on) {
 
 $logPath = Join-Path $env:LOCALAPPDATA "CastReceiver\castreceiver.log"
 $script:logLinesAtStart = if (Test-Path $logPath) { (Get-Content $logPath -Encoding UTF8 | Measure-Object -Line).Lines } else { 0 }
-$p = Start-Process -FilePath $Exe -PassThru
+$p = Start-Process -FilePath $Exe -ArgumentList "--no-intro" -PassThru
 Write-Host "已启动，等待界面就绪 $StartupWaitSeconds 秒…"
 Start-Sleep -Seconds $StartupWaitSeconds
 

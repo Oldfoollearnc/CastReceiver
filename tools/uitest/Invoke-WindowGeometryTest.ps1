@@ -90,7 +90,7 @@ New-Item -ItemType Directory -Path $settingsRoot -Force | Out-Null
 # ---------------------------------------------------------------- 第一次启动
 
 Write-Step "启动（独立配置，不动你的真实设置）"
-$p = Start-Process -FilePath $Exe -ArgumentList @("--vault-root", $vaultRoot, "--settings-root", $settingsRoot, "--instance-suffix", "geo") -PassThru
+$p = Start-Process -FilePath $Exe -ArgumentList "--no-intro --vault-root `"$vaultRoot`" --settings-root `"$settingsRoot`" --instance-suffix geo" -PassThru
 Start-Sleep -Seconds $StartupWaitSeconds
 $h = Get-MainWindowHandle $p.Id "投屏Window"
 if ($h -eq [IntPtr]::Zero) { Write-Bad "未找到主窗口"; Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue; exit 1 }
@@ -161,7 +161,7 @@ $json.WindowWidth = 900
 $json.WindowHeight = 620
 $json | ConvertTo-Json -Depth 6 | Set-Content -Path $settingsFile -Encoding UTF8
 
-$p2 = Start-Process -FilePath $Exe -ArgumentList @("--vault-root", $vaultRoot, "--settings-root", $settingsRoot, "--instance-suffix", "geo") -PassThru
+$p2 = Start-Process -FilePath $Exe -ArgumentList "--no-intro --vault-root `"$vaultRoot`" --settings-root `"$settingsRoot`" --instance-suffix geo" -PassThru
 Start-Sleep -Seconds $StartupWaitSeconds
 $h2 = Get-MainWindowHandle $p2.Id "投屏Window"
 if ($h2 -eq [IntPtr]::Zero) { Write-Bad "第二次启动没找到主窗口"; Stop-Process -Id $p2.Id -Force -ErrorAction SilentlyContinue }

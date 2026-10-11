@@ -58,7 +58,7 @@ function Capture($hwnd, $out, $pad = 16) {
 }
 
 $root = (Get-Location).Path
-$p = Start-Process -FilePath $Exe -WorkingDirectory (Split-Path $Exe) -PassThru
+$p = Start-Process -FilePath $Exe -WorkingDirectory (Split-Path $Exe) -ArgumentList "--no-intro" -PassThru
 Write-Host "已启动，等待 $StartupWaitSeconds 秒…"
 Start-Sleep -Seconds $StartupWaitSeconds
 $p.Refresh(); $main = $p.MainWindowHandle

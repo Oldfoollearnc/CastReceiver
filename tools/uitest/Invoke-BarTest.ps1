@@ -47,7 +47,7 @@ function ZoomText($bar) {
     return "?"
 }
 
-$p = Start-Process -FilePath $Exe -PassThru
+$p = Start-Process -FilePath $Exe -ArgumentList "--no-intro" -PassThru
 Write-Host "已启动，等待 $StartupWaitSeconds 秒…"
 Start-Sleep -Seconds $StartupWaitSeconds
 

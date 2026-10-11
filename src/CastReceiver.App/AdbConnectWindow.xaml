@@ -8,22 +8,22 @@
         WindowStyle="None" ResizeMode="NoResize" UseLayoutRounding="True" ShowInTaskbar="False">
 
     <shell:WindowChrome.WindowChrome>
-        <shell:WindowChrome CaptionHeight="46" ResizeBorderThickness="0" GlassFrameThickness="0"
+        <shell:WindowChrome CaptionHeight="48" ResizeBorderThickness="0" GlassFrameThickness="0"
                             CornerRadius="0" UseAeroCaptionButtons="False" />
     </shell:WindowChrome.WindowChrome>
 
     <Border Background="{DynamicResource B.Bg}" BorderBrush="{DynamicResource B.Line}" BorderThickness="1">
         <Grid>
             <Grid.RowDefinitions>
-                <RowDefinition Height="46" />
+                <RowDefinition Height="48" />
                 <RowDefinition Height="*" />
                 <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
 
             <Grid Grid.Row="0">
-                <TextBlock Text="用鼠标控制手机（安卓 · 无线调试）" FontSize="13.5" FontWeight="SemiBold"
+                <TextBlock Text="用鼠标控制手机（安卓 · 无线调试）" Style="{DynamicResource S.H1}"
                            Margin="20,0,0,0" VerticalAlignment="Center" />
-                <Button Content="&#xE8BB;" Style="{DynamicResource S.BtnIcon}" HorizontalAlignment="Right" Margin="0,0,10,0"
+                <Button Content="&#xE8BB;" Style="{DynamicResource S.BtnClose}" HorizontalAlignment="Right" Margin="0,0,8,0"
                         Click="BtnClose_Click" shell:WindowChrome.IsHitTestVisibleInChrome="True"
                         AutomationProperties.Name="关闭" ToolTip="关闭（Esc）" />
             </Grid>
