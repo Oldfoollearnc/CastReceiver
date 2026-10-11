@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    开发期验证工程：把 FairPlay 移植代码单独编出来，逐层比对
+    tests/CastReceiver.SelfTest/AirPlay/fairplay-vectors.json（由 UxPlay 参考实现生成）。
+
+    用法（在 vector-verify 目录下，把向量文件路径作为第一个参数传入）：
+      dotnet run -c Release [向量文件路径]
+
+    它不参与产品构建（不在 CastReceiver.slnx 里），只在改动 FairPlay 代码后用来回归。
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <AssemblyName>fairplay-verify</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="Program.cs" />
+    <Compile Include="..\..\..\src\CastReceiver.Core\AirPlay\FairPlay\*.cs" />
+    <Compile Include="..\..\..\src\CastReceiver.Core\AirPlay\Mirror\Aes128Ctr.cs" />
+  </ItemGroup>
+
+</Project>

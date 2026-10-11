@@ -1,0 +1,38 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    ③ 多设备并排的前置验证：**同一个 MediaSource 能不能在宿主之间搬动**。
+
+    宫格界面要这么做：谁被放大，就把那一路的 MediaSource 挂到主宿主上，
+    其余各路挂到各自的格子宿主上 —— 也就是必然要「从一个宿主摘下来、挂到另一个宿主上」。
+    而 MediaSource 一旦被 Dispose 就不能再用，所以搬动必须走 Detach(disposeSource:false)。
+
+    这里直接编译**产品真实代码**（CompositionVideoHost / AirPlayVideoSource），
+    用真实 H.264 帧喂进去，并用 PrintWindow 取像素判断「是不是真的出画」——
+    只断言 SurfaceBrush != null 是不够的（"一片黑"那次就是断言全过、画面全黑）。
+
+    不参与产品构建。
+  -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows10.0.26100.0</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <AssemblyName>move-spike</AssemblyName>
+    <StartupObject>MoveSpike.Program</StartupObject>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <SupportedOSPlatformVersion>10.0.22621.0</SupportedOSPlatformVersion>
+    <NoWarn>$(NoWarn);CS1574</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="Program.cs" />
+    <Compile Include="..\..\..\src\CastReceiver.App\Interop\CompositionInterop.cs" />
+    <Compile Include="..\..\..\src\CastReceiver.App\Interop\AirPlayVideoSource.cs" />
+    <Compile Include="..\..\..\src\CastReceiver.App\Services\WindowProtection.cs" />
+  </ItemGroup>
+
+</Project>

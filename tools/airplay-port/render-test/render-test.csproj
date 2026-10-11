@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    开发期验证工程：把真实的 H.264 Annex-B 帧推给 AirPlayVideoSource，
+    用 MediaPlayer（帧服务器模式）确认 Media Foundation 真的解码出了画面。
+    只链接 App 里的 AirPlayVideoSource.cs，不参与产品构建。
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0-windows10.0.26100.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <AssemblyName>render-test</AssemblyName>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <SupportedOSPlatformVersion>10.0.22621.0</SupportedOSPlatformVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="Program.cs" />
+    <Compile Include="..\..\..\src\CastReceiver.App\Interop\AirPlayVideoSource.cs" />
+  </ItemGroup>
+
+</Project>

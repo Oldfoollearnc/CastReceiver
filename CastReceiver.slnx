@@ -1,0 +1,13 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/CastReceiver.App/CastReceiver.App.csproj" />
+    <Project Path="src/CastReceiver.Core/CastReceiver.Core.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/CastReceiver.SelfTest/CastReceiver.SelfTest.csproj" />
+  </Folder>
+  <Folder Name="/tools/">
+    <Project Path="tools/FeasibilityProbe/FeasibilityProbe.csproj" />
+    <Project Path="tools/MiracastProbeWpf/MiracastProbeWpf.csproj" />
+  </Folder>
+</Solution>

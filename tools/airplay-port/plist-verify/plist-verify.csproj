@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    开发期验证工程：把二进制 plist 实现单独编出来，与 Python plistlib 交叉验证
+    （read：plistlib 写的 plist 必须被正确解析；write：本实现写的必须被 plistlib 读懂）。
+    不参与产品构建。
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <AssemblyName>plist-verify</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="Program.cs" />
+    <Compile Include="..\..\..\src\CastReceiver.Core\AirPlay\Plist\*.cs" />
+  </ItemGroup>
+
+</Project>

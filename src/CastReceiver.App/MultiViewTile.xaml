@@ -1,0 +1,53 @@
+<UserControl x:Class="CastReceiver.App.MultiViewTile"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ctrl="clr-namespace:CastReceiver.App.Interop"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             mc:Ignorable="d"
+             FontFamily="{DynamicResource F.Ui}"
+             SnapsToDevicePixels="True">
+
+    <!-- 多设备并排的一格（③）：
+         上方一条细标题栏（状态点 + 名字 + 第几路），下面是这一路自己的画面宿主。
+         标题栏**另起一行**而不是叠在画面上 —— HwndHost 有空域限制（WPF 画不到它上面），
+         叠上去会被画面盖住看不见（小窗控制条当初也是这么处理的）。
+         点这一格＝把这一路放大（④）。 -->
+    <Border x:Name="Chrome" Background="{DynamicResource B.Bg}"
+            BorderBrush="{DynamicResource B.Line}" BorderThickness="1" CornerRadius="10"
+            ClipToBounds="True" Cursor="Hand" MouseLeftButtonUp="Chrome_Click"
+            AutomationProperties.Name="并排画面格">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition x:Name="HeaderRow" Height="26" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+
+            <Grid x:Name="Header" Grid.Row="0" Background="{DynamicResource B.Surface}">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <Ellipse x:Name="Dot" Grid.Column="0" Width="6" Height="6" Margin="9,0,0,0"
+                         VerticalAlignment="Center" Fill="{DynamicResource B.Ok}" />
+
+                <TextBlock x:Name="TxtLabel" Grid.Column="1" Margin="7,0,6,0" FontSize="11.5"
+                           Foreground="{DynamicResource B.Text}" VerticalAlignment="Center"
+                           TextTrimming="CharacterEllipsis" Text="AirPlay 设备"
+                           AutomationProperties.AutomationId="MultiViewTileLabel" />
+
+                <TextBlock x:Name="TxtIndex" Grid.Column="2" Margin="0,0,9,0" FontSize="11"
+                           Foreground="{DynamicResource B.TextFaint}" FontFamily="{DynamicResource F.Mono}"
+                           VerticalAlignment="Center" Text="1/2"
+                           AutomationProperties.AutomationId="MultiViewTileIndex" />
+            </Grid>
+
+            <Border x:Name="Frame" Grid.Row="1" Background="#000000"
+                    BorderBrush="{DynamicResource B.LineSoft}" BorderThickness="0,1,0,0">
+                <ctrl:CompositionVideoHost x:Name="TileHost" />
+            </Border>
+        </Grid>
+    </Border>
+</UserControl>

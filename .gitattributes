@@ -1,0 +1,25 @@
+# 文本文件统一按 LF 存储，检出时用 CRLF（Windows 项目，避免每次 diff 全是换行差异）
+* text=auto eol=crlf
+
+# 明确按 LF 走的脚本/配置
+*.sh text eol=lf
+*.ps1 text eol=lf
+*.cs text eol=crlf
+*.xaml text eol=crlf
+*.csproj text eol=crlf
+*.props text eol=crlf
+*.slnx text eol=crlf
+
+# 二进制：不做任何转换（否则素材会被"损坏"）
+*.exe binary
+*.dll binary
+*.bin binary
+*.mp4 binary
+*.mov binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.zip binary
+*.nupkg binary

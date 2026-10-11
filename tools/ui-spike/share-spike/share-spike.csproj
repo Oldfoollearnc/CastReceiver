@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    实测产品的真实宿主：两个 CompositionVideoHost + 共享合成器 + MirrorFrom，
+    并验证「关掉一个窗口不会弄没另一个窗口的画面」（引用计数）。
+    直接编译产品源码，不复制实现 —— 测的就是要上线的那份代码。
+    不参与产品构建。
+  -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows10.0.26100.0</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <AssemblyName>share-spike</AssemblyName>
+    <StartupObject>ShareSpike.Program</StartupObject>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <SupportedOSPlatformVersion>10.0.22621.0</SupportedOSPlatformVersion>
+    <NoWarn>$(NoWarn);CS1574</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="Program.cs" />
+    <Compile Include="..\..\..\src\CastReceiver.App\Interop\CompositionInterop.cs" />
+    <Compile Include="..\..\..\src\CastReceiver.App\Interop\AirPlayVideoSource.cs" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,59 @@
+<Window x:Class="CastReceiver.App.VaultBindWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
+        Title="设备归属" Height="470" Width="540"
+        Background="{DynamicResource B.Bg}" Foreground="{DynamicResource B.Text}"
+        FontFamily="{DynamicResource F.Ui}" WindowStartupLocation="CenterOwner"
+        WindowStyle="None" ResizeMode="NoResize" UseLayoutRounding="True" ShowInTaskbar="False">
+
+    <shell:WindowChrome.WindowChrome>
+        <shell:WindowChrome CaptionHeight="46" ResizeBorderThickness="0" GlassFrameThickness="0"
+                            CornerRadius="0" UseAeroCaptionButtons="False" />
+    </shell:WindowChrome.WindowChrome>
+
+    <Border Background="{DynamicResource B.Bg}" BorderBrush="{DynamicResource B.Line}" BorderThickness="1">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="46" />
+                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <Grid Grid.Row="0">
+                <TextBlock x:Name="TxtTitle" Text="这台设备归入哪个账号？" FontSize="13.5" FontWeight="SemiBold"
+                           Margin="20,0,0,0" VerticalAlignment="Center" />
+                <Button Content="&#xE8BB;" Style="{DynamicResource S.BtnIcon}" HorizontalAlignment="Right" Margin="0,0,10,0"
+                        Click="BtnSkip_Click" shell:WindowChrome.IsHitTestVisibleInChrome="True"
+                        AutomationProperties.Name="关闭" ToolTip="关闭（Esc）" />
+            </Grid>
+
+            <StackPanel Grid.Row="1" Margin="24,10,24,0">
+                <Border Style="{DynamicResource S.Card}" Padding="12,10" Background="{DynamicResource B.Surface}">
+                    <StackPanel>
+                        <TextBlock x:Name="TxtDevice" FontSize="12.5" FontWeight="SemiBold" TextWrapping="Wrap" />
+                        <TextBlock x:Name="TxtFingerprint" FontSize="11" Foreground="{DynamicResource B.TextFaint}"
+                                   FontFamily="{DynamicResource F.Mono}" Margin="0,6,0,0" TextWrapping="Wrap" />
+                    </StackPanel>
+                </Border>
+
+                <TextBlock x:Name="TxtHint" FontSize="12" Foreground="{DynamicResource B.TextDim}" TextWrapping="Wrap"
+                           Margin="0,14,0,0" LineHeight="19"
+                           Text="绑定只决定「这台设备投屏时，截屏与录像归入谁的库」；查看内容仍然需要该账号的密码。" />
+
+                <TextBlock Text="选择账号" FontSize="12" Foreground="{DynamicResource B.TextFaint}" Margin="0,16,0,0" />
+                <ListBox x:Name="LstAccounts" Margin="0,6,0,0" Height="150" FontSize="12.5"
+                         Background="{DynamicResource B.Surface}" Foreground="{DynamicResource B.Text}"
+                         BorderBrush="{DynamicResource B.Line}" />
+            </StackPanel>
+
+            <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="24,14,24,18">
+                <Button Content="暂不绑定" Style="{DynamicResource S.Btn}" Padding="14,7" FontSize="12" Click="BtnSkip_Click" />
+                <Button Content="新建账号…" Style="{DynamicResource S.Btn}" Padding="14,7" FontSize="12" Margin="10,0,0,0"
+                        Click="BtnNewAccount_Click" />
+                <Button x:Name="BtnBind" Content="绑定到所选账号" Style="{DynamicResource S.BtnPrimary}" Padding="18,7" FontSize="12"
+                        Margin="10,0,0,0" Click="BtnBind_Click" IsDefault="True" />
+            </StackPanel>
+        </Grid>
+    </Border>
+</Window>

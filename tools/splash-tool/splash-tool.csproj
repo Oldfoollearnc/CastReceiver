@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    启动动画素材工具（开发期用，不参与产品构建）：
+      frames <video> <outDir> <t1,t2,...>            抽帧成 PNG（用来看素材、挑镜头）
+      clip   <video> <start> <end> <out.mp4> [w] [h] [kbps]
+                                                    裁一小段并转码成小文件（用于随程序发布）
+    走的是系统自带的 Media Foundation（MediaComposition.GetThumbnailAsync / MediaTranscoder），
+    不需要 ffmpeg。
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0-windows10.0.26100.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <AssemblyName>splash-tool</AssemblyName>
+    <RootNamespace>SplashTool</RootNamespace>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <SupportedOSPlatformVersion>10.0.22621.0</SupportedOSPlatformVersion>
+  </PropertyGroup>
+
+</Project>

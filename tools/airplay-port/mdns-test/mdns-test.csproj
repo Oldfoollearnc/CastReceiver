@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    开发期验证宿主：把 mDNS 应答器跑起来，供 tools/airplay-port/mdns_query.py 做真实查询验证。
+    只链接 Discovery 下的源码（无产品依赖），不参与产品构建。
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <AssemblyName>mdns-test</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="Program.cs" />
+    <Compile Include="..\..\..\src\CastReceiver.Core\AirPlay\Discovery\*.cs" />
+  </ItemGroup>
+
+</Project>

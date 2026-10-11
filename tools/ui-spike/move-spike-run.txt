@@ -1,0 +1,53 @@
+loaded 300 real H.264 frames from C:\Users\Administrator\Desktop\投屏Window 桌面版\tools\ui-spike\sample_frames.bin
+  [A] Composition 视频宿主已就绪
+  [B] Composition 视频宿主已就绪
+  [C] Composition 视频宿主已就绪
+READY A.IsReady=True B.IsReady=True C.IsReady=True SharedCompositorInUse=3
+  [A] 已开始渲染手机画面
+  [A] 媒体失败： (0x80700001)
+  [A] 播放状态：Opening
+  [A] 播放状态：Paused
+  [A] 画面已就绪：640×360
+  [A] 播放状态：Buffering
+  [A] 播放状态：Paused
+  [A] 播放状态：Playing
+[step1-主位首次出画] brush=True state=Playing natural=640x360 printwindow=464x261 blank=False bright=1020/1023 (初始挂载)
+move #1: A.Detach(disposeSource:false) → B.AttachSource(同一个 MediaSource)
+  [A] 播放状态：Paused
+  [B] 媒体失败： (0x80700001)
+  [B] 已开始渲染手机画面
+  [B] 播放状态：Opening
+  [B] 播放状态：Paused
+  [B] 画面已就绪：640×360
+  [B] 播放状态：Paused
+  [B] 播放状态：Paused
+  [B] 播放状态：Buffering
+  [B] 播放状态：Paused
+  [B] 播放状态：Buffering
+[step2-搬到B后出画] brush=True state=Buffering natural=640x360 printwindow=464x261 blank=True bright=0/1023 (第一次搬动)
+move #2: B.Detach(disposeSource:false) → A.AttachSource(同一个 MediaSource)
+  [A] 媒体失败： (0x80700001)
+  [A] 已开始渲染手机画面
+  [A] 播放状态：Opening
+  [A] 播放状态：Paused
+  [A] 画面已就绪：640×360
+  [A] 播放状态：Playing
+[step3-搬回A后出画] brush=True state=Playing natural=640x360 printwindow=464x261 blank=False bright=1020/1023 (第二次搬动（换回主位）)
+newtile: 把新建宿主设为可见，等一轮布局后再 AttachSource（宫格新增一路的顺序）
+  [C] 已开始渲染手机画面
+  [C] 媒体失败： (0x80700001)
+  [C] 播放状态：Opening
+  [C] 播放状态：Paused
+  [C] 画面已就绪：640×360
+  [C] 播放状态：Paused
+  [C] 播放状态：Paused
+  [C] 播放状态：Buffering
+  [C] 播放状态：Paused
+  [C] 播放状态：Playing
+[step4-新建格子出画] brush=True state=Playing natural=640x360 printwindow=464x261 blank=False bright=1014/1023 (后创建宿主 + 先可见再挂)
+frame feeder: pushed=684 delivered=628 dropped=50
+RESULT: FAIL 3/4
+  PASS step1-主位首次出画（有画面）
+  FAIL step2-搬到B后出画（没有画面）
+  PASS step3-搬回A后出画（有画面）
+  PASS step4-新建格子出画（有画面）

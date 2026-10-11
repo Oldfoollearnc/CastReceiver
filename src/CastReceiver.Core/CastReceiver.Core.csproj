@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows10.0.26100.0</TargetFramework>
+    <RootNamespace>CastReceiver.Core</RootNamespace>
+    <AssemblyName>CastReceiver.Core</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="LibVLCSharp" Version="3.10.1" />
+    <!-- 加密库：DPAPI 用于保护「非关键元数据」（设备别名等）；条目内容与私钥走 RSA/AES，不依赖 DPAPI -->
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="10.0.1" />
+  </ItemGroup>
+
+</Project>

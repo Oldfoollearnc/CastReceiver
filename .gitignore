@@ -1,0 +1,63 @@
+# ---------------------------------------------------------------------------
+# 投屏Window（CastReceiver）—— 本地仓库忽略规则
+#
+# 原则：**源码、素材、文档进仓库；构建产物、发布产物、安装包不进**。
+# 理由：发布版目录里是几百 MB 的自包含发布物与安装包，每次都变，
+#       进了仓库只会让 diff 全是二进制垃圾（用户也明确要求"只更新发布版、不重建安装包"）。
+# ---------------------------------------------------------------------------
+
+# ---- .NET 构建输出 ----
+[Bb]in/
+[Oo]bj/
+[Dd]ebug/
+[Rr]elease/
+*.dll
+*.pdb
+*.exe.config
+*.deps.json
+*.runtimeconfig.json
+project.lock.json
+*.nuget.g.props
+*.nuget.g.targets
+
+# ---- 例外：这些二进制/素材是项目资产，必须跟着走 ----
+!assets/**/*.exe
+!assets/**/*.mp4
+!tools/**/*.bin
+
+# ---- IDE / 编辑器 ----
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+*.userprefs
+*.swp
+
+# ---- 发布产物与安装包（只在本机更新，不进仓库）----
+发布版/
+installer/*.exe
+installer/*.msi
+installer/*.msix
+installer/Output/
+
+# ---- 运行时 / 自检产物 ----
+*.log
+selftest-*.txt
+*.tmp
+*.bak
+startup.log
+
+# ---- 工具链产物 ----
+tools/**/__pycache__/
+tools/**/*.pyc
+node_modules/
+tools/**/out/
+tools/**/dist/
+*.nupkg
+
+# ---- 开发期间的一次性临时目录 ----
+_temp/
+.tmp/
+crash-probe*/
+*-probe/

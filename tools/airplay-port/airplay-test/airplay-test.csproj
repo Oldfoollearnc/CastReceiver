@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    开发期验证宿主：同时起 mDNS 广播与 RTSP 控制通道，
+    供 tools/airplay-port/airplay_fake_client.py 扮演 iPhone 走一遍完整握手。
+    只链接 Core 里 AirPlay 目录的源码（无产品依赖），不参与产品构建。
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <AssemblyName>airplay-test</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="Program.cs" />
+    <Compile Include="..\..\..\src\CastReceiver.Core\AirPlay\**\*.cs" />
+  </ItemGroup>
+
+</Project>

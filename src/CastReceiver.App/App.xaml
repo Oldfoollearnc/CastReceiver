@@ -1,0 +1,15 @@
+<Application x:Class="CastReceiver.App.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             ShutdownMode="OnMainWindowClose">
+    <Application.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <!-- [0] 主题调色板（运行时会被替换成浅色/深色） -->
+                <ResourceDictionary Source="Themes/Dark.xaml" />
+                <!-- [1] 控件样式 -->
+                <ResourceDictionary Source="Themes/Styles.xaml" />
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
+    </Application.Resources>
+</Application>

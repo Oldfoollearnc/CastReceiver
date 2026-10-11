@@ -1,0 +1,67 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows10.0.26100.0</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <RootNamespace>CastReceiver.App</RootNamespace>
+    <AssemblyName>投屏Window</AssemblyName>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <Platforms>x64</Platforms>
+    <PlatformTarget>x64</PlatformTarget>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>false</SelfContained>
+    <PublishSingleFile>false</PublishSingleFile>
+    <SatelliteResourceLanguages>zh-Hans;en</SatelliteResourceLanguages>
+    <!-- 预编译（ReadyToRun）显著降低首次启动的 JIT 开销 -->
+    <ApplicationIcon>app.ico</ApplicationIcon>
+    <PublishReadyToRun>true</PublishReadyToRun>
+    <PublishReadyToRunComposite>false</PublishReadyToRunComposite>
+    <TieredCompilationQuickJitForLoops>true</TieredCompilationQuickJitForLoops>
+    <StartupObject>CastReceiver.App.Program</StartupObject>
+
+    <!-- 版本与作者信息（会写进 exe 属性，安装包也用它） -->
+    <Version>1.1.4</Version>
+    <FileVersion>1.1.4.0</FileVersion>
+    <AssemblyVersion>1.1.4.0</AssemblyVersion>
+    <Product>投屏Window 桌面版</Product>
+    <Company>猪猪</Company>
+    <Authors>猪猪</Authors>
+    <Copyright>版权所有 © 2026 猪猪</Copyright>
+    <Description>手机镜像接收端（Miracast / Wi-Fi Display）</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Content Include="..\..\assets\sample.mp4" Link="Assets\sample.mp4" CopyToOutputDirectory="PreserveNewest" />
+    <!-- 启动入场动画的内置片段（设置里可切换，也可导入自己的视频，导入的原文件直接播放不转码）。
+         这批小片段由 tools\splash-tool + ffmpeg 裁出来：1280 宽、约 7 秒、带原声。 -->
+    <Content Include="..\..\assets\intro\*.mp4" Link="Assets\intro\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <!-- ⑧ 已停用（安卓 adb 无线鼠标控制）：用户要求先停用、代码保留 ——
+       adb 二进制暂时不再随程序发布。恢复时把下面这段的注释去掉即可；
+       assets\adb\ 里的文件一直都在，没有删。
+       ⑧ 原本要用的 adb：随程序带一份，用户机器上没装 Android SDK 也能用
+       （来源：Google platform-tools，Apache-2.0，见同目录 NOTICE.txt）。
+  <ItemGroup>
+    <Content Include="..\..\assets\adb\adb.exe" Link="Assets\adb\adb.exe" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\assets\adb\AdbWinApi.dll" Link="Assets\adb\AdbWinApi.dll" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\assets\adb\AdbWinUsbApi.dll" Link="Assets\adb\AdbWinUsbApi.dll" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\assets\adb\NOTICE.txt" Link="Assets\adb\NOTICE.txt" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+  -->
+
+
+  <ItemGroup>
+    <ProjectReference Include="..\CastReceiver.Core\CastReceiver.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- 会话锁屏通知：Win+L / 切换用户 / 屏保时自动上锁并遮挡画面 -->
+    <PackageReference Include="Microsoft.Win32.SystemEvents" Version="10.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Resource Include="app.ico" />
+  </ItemGroup>
+</Project>
