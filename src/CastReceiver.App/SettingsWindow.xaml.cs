@@ -897,7 +897,11 @@ public partial class SettingsWindow : Window
     {
         try
         {
-            if (Application.Current.MainWindow is MainWindow main) main.FinishIntroPreview();
+            if (Application.Current.MainWindow is MainWindow main)
+            {
+                main.FinishIntroPreview();
+                main.HideIntroSkipHint();
+            }
             Show();
             BringToFrontAndFocus();
             TxtIntroHint.Text = hint;
@@ -1045,6 +1049,18 @@ public partial class SettingsWindow : Window
                 catch { }
             }, Dispatcher);
             _previewGuard.Start();
+
+            // 顺便让用户在小窗口里就看到那条"单击鼠标跳过"提示（正式启动时它是在"全部加载完成"后出现）
+            int thisSeq = seq;
+            _ = Dispatcher.BeginInvoke(new Action(async () =>
+            {
+                try
+                {
+                    await Task.Delay(1400);
+                    if (thisSeq == _previewSeq && Application.Current.MainWindow is MainWindow mw) mw.ShowIntroSkipHint();
+                }
+                catch { }
+            }));
         }
         catch (Exception ex)
         {

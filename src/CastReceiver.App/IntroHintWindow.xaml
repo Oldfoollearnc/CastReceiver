@@ -1,0 +1,20 @@
+<Window x:Class="CastReceiver.App.IntroHintWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="跳过提示" WindowStyle="None" AllowsTransparency="True" Background="Transparent"
+        ShowInTaskbar="False" ShowActivated="False" Topmost="True" ResizeMode="NoResize"
+        SizeToContent="WidthAndHeight" WindowStartupLocation="Manual"
+        FontFamily="{DynamicResource F.Ui}" Focusable="False">
+    <!-- 入场动画演到"程序已经全部就绪"时，在画面下方那两条黑边里浮出这一条：
+         告诉用户可以点一下跳过。它是**点击穿透**的（见 code-behind 的 WS_EX_TRANSPARENT），
+         所以点它等于点入场窗本身，照样跳过。 -->
+    <Border Background="#A6000000" CornerRadius="999" Padding="16,8" BorderBrush="#2EFFFFFF" BorderThickness="1"
+            Margin="12">
+        <StackPanel Orientation="Horizontal">
+            <TextBlock Text="&#xE7C9;" FontFamily="Segoe MDL2 Assets" FontSize="12" Foreground="#E6FFFFFF"
+                       VerticalAlignment="Center" />
+            <TextBlock x:Name="TxtHint" Text="单击鼠标跳过" FontSize="13" Foreground="#F5FFFFFF"
+                       Margin="8,0,0,0" VerticalAlignment="Center" />
+        </StackPanel>
+    </Border>
+</Window>

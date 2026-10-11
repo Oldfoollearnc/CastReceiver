@@ -1394,6 +1394,7 @@ public partial class MainWindow : Window
         _introActive = false;
         _introLeaving = false;
         _introWaiting = false;
+        HideIntroSkipHint();
         BringToFrontAfterIntro();
 
         // 动画结束的这一刻，程序必须已经**完全就绪**：控制条补上、画面按状态恢复、
@@ -1429,6 +1430,7 @@ public partial class MainWindow : Window
         if (_introNative)
         {
             NativeIntroWindow.Finish();
+            ShowIntroSkipHint();           // 都加载好了：在下边那条黑边里提醒"单击鼠标跳过"
             // **一次性**定时器：交给界面后就把自己停掉。
             // 以前这个 DispatcherTimer 从不 Stop，于是每 800ms 都会把 _introNative 抹成 false、
             // 顺手把控制条显示出来 —— 预览期间它会把预览状态一起冲掉（界面上就是"黑屏还在、
@@ -1445,6 +1447,7 @@ public partial class MainWindow : Window
                 if (_introPreviewActive) return;      // 这期间是预览在做主，别去动它的状态
 
                 _introNative = false;
+                HideIntroSkipHint();
                 ApplyStageVisibility();
                 if (_barPendingIntro) { _barPendingIntro = false; ShowBar(); }
                 if (_pendingTutorial) { _pendingTutorial = false; MaybeShowTutorial(); }
@@ -1788,6 +1791,39 @@ public partial class MainWindow : Window
     }
 
     /// <summary>主窗口淡入（启动闪屏关闭后调用）。</summary>
+    private IntroHintWindow? _introHint;
+
+    /// <summary>
+    /// 在入场画面上浮出"单击鼠标跳过"。
+    /// 只在**全部加载完成**之后调（就是 FinishIntroWhenReady 那一刻），位置落在入场窗下边的黑边里。
+    /// </summary>
+    public void ShowIntroSkipHint(string text = "单击鼠标跳过")
+    {
+        try
+        {
+            if (_closing) return;
+            if (!NativeIntroWindow.TryGetBounds(out int x, out int y, out int w, out int h)) return;
+
+            double dpi = System.Windows.Media.VisualTreeHelper.GetDpi(this).DpiScaleX;
+            _introHint ??= new IntroHintWindow();
+            _introHint.Hint = text;
+            _introHint.ShowFor(x, y, w, h, dpi);
+        }
+        catch { }
+    }
+
+    /// <summary>收掉跳过提示。</summary>
+    public void HideIntroSkipHint()
+    {
+        try
+        {
+            IntroHintWindow? hint = _introHint;
+            _introHint = null;
+            hint?.FadeOutAndClose();
+        }
+        catch { }
+    }
+
     /// <summary>
     /// 把主窗口带回前台（入场动画收场后必须做）。
     ///

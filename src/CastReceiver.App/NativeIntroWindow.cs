@@ -87,6 +87,7 @@ internal sealed class NativeIntroWindow
     private static extern IntPtr CreateWindowEx(int exStyle, string className, string windowName, int style,
         int x, int y, int w, int h, IntPtr parent, IntPtr menu, IntPtr instance, IntPtr param);
     [DllImport("user32.dll")] private static extern bool DestroyWindow(IntPtr hwnd);
+    [DllImport("user32.dll")] private static extern bool GetWindowRect(IntPtr hwnd, out Rect rect);
     [DllImport("user32.dll")] private static extern bool ShowWindow(IntPtr hwnd, int cmd);
     [DllImport("user32.dll")] private static extern IntPtr DefWindowProc(IntPtr hwnd, uint msg, IntPtr w, IntPtr l);
     [DllImport("user32.dll")] private static extern bool GetMessage(out Msg msg, IntPtr hwnd, uint min, uint max);
@@ -202,6 +203,23 @@ internal sealed class NativeIntroWindow
 
     /// <summary>入场窗收场之后通知一声（预览用它把界面放回来）。</summary>
     public static event Action? Closed;
+
+    /// <summary>当前入场窗的外框（屏幕物理像素）。给"单击鼠标跳过"提示条定位用。</summary>
+    public static bool TryGetBounds(out int x, out int y, out int width, out int height)
+    {
+        x = y = width = height = 0;
+        try
+        {
+            NativeIntroWindow? window;
+            lock (Gate) { window = _current; }
+            if (window is null || window._hwnd == IntPtr.Zero) return false;
+            if (!GetWindowRect(window._hwnd, out Rect rect)) return false;
+            x = rect.Left; y = rect.Top;
+            width = rect.Right - rect.Left; height = rect.Bottom - rect.Top;
+            return width > 40 && height > 40;
+        }
+        catch { return false; }
+    }
 
     /// <summary>片子已经播完（程序可能还没就绪）。</summary>
     public static bool HasEnded
