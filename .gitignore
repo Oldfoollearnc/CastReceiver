@@ -25,6 +25,11 @@ project.lock.json
 !assets/**/*.mp4
 !tools/**/*.bin
 
+# adb 的 Windows 运行时依赖：csproj 以 Content 明确引用（见 CastReceiver.App.csproj），
+# 少了它们 adb.exe 在 Windows 上根本起不来，全新克隆还会直接 error MSB3030 编译失败。
+# 与 adb.exe 同属 Google platform-tools（Apache-2.0，NOTICE.txt 已随包）。
+!assets/adb/*.dll
+
 # ---- IDE / 编辑器 ----
 .vs/
 .vscode/
