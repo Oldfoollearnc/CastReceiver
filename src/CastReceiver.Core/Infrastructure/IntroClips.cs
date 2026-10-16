@@ -3,16 +3,24 @@ namespace CastReceiver.Core.Infrastructure;
 /// <summary>
 /// 启动入场动画的素材解析规则。
 ///
-/// 用户要求（本轮起）：**程序不再内置任何画面**，素材完全由用户自己添加；
-/// 导入的原文件**直接播放、不做任何转码**，所以"裁切"只裁时长、不掉画质。
+/// 沿革：早期一度"不内置任何画面"（素材完全由用户添加）；作者后来要求把
+/// 他自己配的那段开场做成**内置素材**随安装包发布，于是恢复了内置清单。
+/// 导入/内置的文件都**直接播放、不做任何转码**，所以"裁切"只裁时长、不掉画质。
 /// </summary>
 public static class IntroClips
 {
     /// <summary>一个片段：key 存进设置，Title 给界面看，FileName 是随程序发布的那份。</summary>
     public sealed record Clip(string Key, string Title, string FileName);
 
-    /// <summary>内置片段清单：现在是空的（用户不要内置画面）。以后要加就往这里塞。</summary>
-    public static IReadOnlyList<Clip> BuiltIn { get; } = Array.Empty<Clip>();
+    /// <summary>
+    /// 内置片段清单：发布时由 build.ps1 把 <c>assets/intro/&lt;FileName&gt;</c> 复制到
+    /// 程序目录的 <c>Assets/intro/</c> 下（Inno 的 [Files] 会连整个目录一起打进安装包）。
+    /// 文件名用纯 ASCII，避免安装器/压缩环节的编码麻烦。
+    /// </summary>
+    public static IReadOnlyList<Clip> BuiltIn { get; } = new[]
+    {
+        new Clip("builtin", "内置开场", "builtin-intro.mp4"),
+    };
 
     /// <summary>设置里"自定义"用的前缀：自定义项存成 <c>file:完整路径</c>。</summary>
     public const string FilePrefix = "file:";
@@ -55,6 +63,14 @@ public static class IntroClips
         }
 
         Clip? hit = BuiltIn.FirstOrDefault(c => string.Equals(c.Key, setting, StringComparison.OrdinalIgnoreCase));
-        return hit?.Title ?? "未选择素材";
+        if (hit is null)
+        {
+            return "未选择素材";
+        }
+
+        // 安装包默认**不附带**开场视频（191MB，打包很慢）：这时候要如实说"没有"，
+        // 不能让界面显示"内置开场"却什么都放不出来。
+        string path = Path.Combine(baseDirectory, "Assets", "intro", hit.FileName);
+        return File.Exists(path) ? hit.Title : $"{hit.Title}（当前安装包未附带）";
     }
 }

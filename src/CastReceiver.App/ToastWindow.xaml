@@ -9,7 +9,8 @@
         <StackPanel>
             <StackPanel Orientation="Horizontal">
                 <Ellipse x:Name="Dot" Width="8" Height="8" Fill="{DynamicResource B.Ok}" VerticalAlignment="Center" />
-                <TextBlock x:Name="TxtTitle" FontSize="13" FontWeight="SemiBold" Margin="9,0,0,0" VerticalAlignment="Center" />
+                <TextBlock x:Name="TxtTitle" FontSize="13" FontWeight="SemiBold" Margin="9,0,0,0" VerticalAlignment="Center"
+                           AutomationProperties.LiveSetting="Assertive" />
             </StackPanel>
             <!-- 正文限高 + 省略号：提示条会从右下角往上长，不限高就会一路盖住画面 -->
             <TextBlock x:Name="TxtBody" FontSize="12" Foreground="{DynamicResource B.TextDim}" Margin="17,7,0,0"

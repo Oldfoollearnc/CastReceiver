@@ -2,10 +2,27 @@
 ; 编译： "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer\投屏Window.iss
 
 #define AppName "投屏Window"
-#define AppVersion "1.1.4"
+; 版本号默认值。**单一来源是 ..\Directory.Build.props 的 <Version>**，
+; build.ps1 会用 /DAppVersion=x.y.z 覆盖这里，不要手工同步两处。
+#ifndef AppVersion
+  #define AppVersion "2.1.0"
+#endif
 #define AppPublisher "猪猪"
 #define AppExe "投屏Window.exe"
 #define AppId "{{8E31B7A4-2C5D-4F1B-9A77-6D5C4B3A2101}"
+
+; ---------------------------------------------------------------------------
+; 开场视频（Assets\intro\builtin-intro.mp4，约 191MB）是否打进安装包。
+; **默认不含**：视频几乎压不动，打进去要多花好几分钟、安装包也从 ~60MB 涨到 ~250MB。
+; build.ps1 -Installer 默认传 /DNOINTRO；要带就加 -InstallerWithIntro。
+; 注意：绿色版（发布版\投屏Window）**始终**带这份视频，这里只影响安装包。
+; 安装后程序找不到素材会自己跳过入场动画（IntroClips.ResolvePath 返回空即跳过）。
+; ---------------------------------------------------------------------------
+#ifdef NOINTRO
+  #define IntroExcludes "Assets\intro\*"
+#else
+  #define IntroExcludes ""
+#endif
 
 [Setup]
 AppId={#AppId}
@@ -36,6 +53,26 @@ VersionInfoProductName={#AppName}
 VersionInfoProductVersion={#AppVersion}
 VersionInfoVersion={#AppVersion}
 VersionInfoCopyright=版权所有 (C) 2026 {#AppPublisher}
+
+; 安装/卸载时若程序正在运行，靠程序自己的单实例互斥体识别（名字见 App.xaml.cs：
+; "CastReceiver.App.SingleInstance" + 实例后缀，正常启动时后缀为空）
+AppMutex=CastReceiver.App.SingleInstance
+
+; 安装前展示最终用户许可协议。
+; ⚠️ 该文件必须存为 **UTF-8 with BOM**，否则 Inno 会按 ANSI 读、中文显示成乱码。
+LicenseFile=..\docs\EULA.txt
+
+; ---------------------------------------------------------------------------
+; 代码签名钩子：默认**不签名也能构建出安装包**；要签名时由 build.ps1 -Sign 传入
+;   /DSIGN /Stsign="<完整的 signtool 命令行，用 $f 代表待签文件>"
+; 例如：
+;   /Stsign="""C:\Program Files (x86)\Windows Kits\10\bin\x64\signtool.exe"" sign /fd sha256 /tr http://timestamp.digicert.com /td sha256 /f cert.pfx /p 密码 $f"
+; 没有证书时请保持不启用，否则安装包会生成失败。
+; ---------------------------------------------------------------------------
+#ifdef SIGN
+SignTool=tsign
+SignedUninstaller=yes
+#endif
 
 [Languages]
 Name: "en"; MessagesFile: "compiler:Default.isl"
@@ -73,7 +110,12 @@ SetupFileCorruptOrWrongVer=安装包已损坏，或与当前安装程序版本�
 Name: "desktopicon"; Description: "创建桌面快捷方式"; GroupDescription: "附加任务："; Flags: checkedonce
 
 [Files]
-Source: "..\发布版\投屏Window\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "..\发布版\投屏Window\*"; DestDir: "{app}"; Excludes: "{#IntroExcludes}"; Flags: ignoreversion recursesubdirs createallsubdirs
+; 法务文本随包安装，「关于」页里有入口可直接打开
+Source: "..\docs\EULA.txt"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\docs\隐私政策.txt"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\docs\第三方声明.txt"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\CHANGELOG.md"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
 Name: "{group}\{#AppName}"; Filename: "{app}\{#AppExe}"

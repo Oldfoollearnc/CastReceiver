@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- 自检专用：一台"假的 adb"。它不连接任何手机，只把**收到的命令原样记下来**，
+       并按 adb 的真实输出格式回话，于是"电脑控制手机"这一整条链路可以在没有真机的情况下端到端验证：
+       命令到底发对了没有、坐标算得对不对、文字有没有被引号吃掉。
+       它**不参与产品构建**，只被 tools\ui-spike\adb-control-verify.ps1 使用。 -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>FakeAdb</AssemblyName>
+    <RootNamespace>FakeAdb</RootNamespace>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+
+</Project>

@@ -8,6 +8,26 @@
     <FontFamily x:Key="F.Mono">Cascadia Mono, Consolas, Microsoft YaHei UI</FontFamily>
     <FontFamily x:Key="F.Icon">Segoe Fluent Icons, Segoe MDL2 Assets</FontFamily>
 
+    <!-- ============================================================ 键盘焦点环
+         自绘模板把系统默认的焦点虚线吃掉了（ListBoxItem 甚至显式设成了 null），
+         键盘用户因此完全看不到焦点在哪。这里统一补一个两层的环：
+           · 外层光晕用 B.FocusRing（跟随强调色，之前定义了却没人用）
+           · 内层描边用 B.Text —— 刻意不用强调色：强调色里 Rose #F472B6 对白底只有 2.65:1，
+             达不到 WCAG 对焦点指示 3:1 的要求；B.Text 在深浅两套主题下都 ≥15:1，稳。 -->
+    <Style x:Key="S.FocusVisual">
+        <Setter Property="Control.Template">
+            <Setter.Value>
+                <ControlTemplate>
+                    <Grid Margin="-4" IsHitTestVisible="False">
+                        <Rectangle RadiusX="12" RadiusY="12" Fill="{DynamicResource B.FocusRing}" />
+                        <Rectangle RadiusX="9" RadiusY="9" Margin="2" Stroke="{DynamicResource B.Text}"
+                                   StrokeThickness="2" SnapsToDevicePixels="True" />
+                    </Grid>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
     <!-- ============================================================ 文字层级
          页面标题 15 / 分组标题 13 / 正文 13 / 说明 12 / 小字 11.5。 -->
     <Style x:Key="S.H1" TargetType="TextBlock">
@@ -93,6 +113,7 @@
         <Setter Property="MinHeight" Value="34" />
         <Setter Property="Cursor" Value="Hand" />
         <Setter Property="SnapsToDevicePixels" Value="True" />
+        <Setter Property="FocusVisualStyle" Value="{StaticResource S.FocusVisual}" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="Button">
@@ -172,6 +193,43 @@
                         </Trigger>
                         <Trigger Property="IsEnabled" Value="False">
                             <Setter Property="Opacity" Value="0.4" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- 危险按钮：删除 / 清空这类不可逆操作。
+         背景刻意用 B.Surface（卡片面）：B.Bad 在浅色主题是 #D2453C，
+         压在 BgSoft / SurfaceHi 上只有约 4.2:1，压在白面上才是 4.51:1（达标）。
+         悬停时底色换成 B.Bad，文字用 B.Surface（浅色 4.51:1 / 深色 6.48:1）—— 原先写死白色，
+         而深色主题的 B.Bad 是浅红，白字只有 2.76:1。 -->
+    <Style x:Key="S.BtnDanger" TargetType="Button" BasedOn="{StaticResource S.Btn}">
+        <Setter Property="Background" Value="{DynamicResource B.Surface}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource B.Bad}" />
+        <Setter Property="Foreground" Value="{DynamicResource B.Bad}" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border x:Name="b" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="1" CornerRadius="9">
+                        <ContentPresenter Margin="{TemplateBinding Padding}" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="b" Property="Background" Value="{DynamicResource B.Bad}" />
+                            <!-- 悬停时底色变成 B.Bad，文字颜色必须跟着换成"面"色而不是写死白色：
+                                 深色主题的 B.Bad 是浅红 #F87171，白字压上去只有 2.76:1 ✗；
+                                 用 B.Surface 则在两套主题都达标（浅色 4.51:1 / 深色 6.48:1）。 -->
+                            <Setter Property="Foreground" Value="{DynamicResource B.Surface}" />
+                        </Trigger>
+                        <Trigger Property="IsPressed" Value="True">
+                            <Setter TargetName="b" Property="Opacity" Value="0.85" />
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Opacity" Value="0.4" />
+                            <Setter Property="Cursor" Value="Arrow" />
                         </Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>
@@ -289,6 +347,75 @@
         </Setter>
     </Style>
 
+    <!-- ============================================================ 媒体语境按钮
+         给"浮在画面之上"的控制条用（悬浮控制条 / 小窗控制条）。刻意不用主题色：
+         舞台恒黑，浅色主题下用主题色会变成浅底深字的白条压在黑画面上。 -->
+    <Style x:Key="S.BtnMedia" TargetType="Button">
+        <Setter Property="FontFamily" Value="{DynamicResource F.Ui}" />
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="Foreground" Value="{DynamicResource B.MediaText}" />
+        <Setter Property="Background" Value="{DynamicResource B.MediaBtn}" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="Padding" Value="12,6" />
+        <Setter Property="MinHeight" Value="30" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="SnapsToDevicePixels" Value="True" />
+        <Setter Property="FocusVisualStyle" Value="{StaticResource S.FocusVisual}" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border x:Name="b" Background="{TemplateBinding Background}" CornerRadius="9">
+                        <ContentPresenter Margin="{TemplateBinding Padding}" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="b" Property="Background" Value="{DynamicResource B.MediaBtnHover}" />
+                        </Trigger>
+                        <Trigger Property="IsPressed" Value="True">
+                            <Setter TargetName="b" Property="Background" Value="{DynamicResource B.MediaBtnPress}" />
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Opacity" Value="0.35" />
+                            <Setter Property="Cursor" Value="Arrow" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- 媒体语境图标按钮：正方形点击区，悬停出圆角底 -->
+    <Style x:Key="S.BtnIconMedia" TargetType="Button" BasedOn="{StaticResource S.BtnMedia}">
+        <Setter Property="Width" Value="30" />
+        <Setter Property="Height" Value="30" />
+        <Setter Property="MinHeight" Value="0" />
+        <Setter Property="Padding" Value="0" />
+        <Setter Property="Background" Value="#00000000" />
+        <Setter Property="Foreground" Value="{DynamicResource B.MediaTextDim}" />
+        <Setter Property="FontFamily" Value="{DynamicResource F.Icon}" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border x:Name="b" Background="{TemplateBinding Background}" CornerRadius="8">
+                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="b" Property="Background" Value="{DynamicResource B.MediaBtnHover}" />
+                            <Setter Property="Foreground" Value="{DynamicResource B.MediaText}" />
+                        </Trigger>
+                        <Trigger Property="IsPressed" Value="True">
+                            <Setter TargetName="b" Property="Background" Value="{DynamicResource B.MediaBtnPress}" />
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Opacity" Value="0.35" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
     <!-- ============================================================ 左侧导航（设置窗口） -->
     <Style x:Key="S.NavItem" TargetType="RadioButton">
         <Setter Property="FontFamily" Value="{DynamicResource F.Ui}" />
@@ -296,6 +423,7 @@
         <Setter Property="Foreground" Value="{DynamicResource B.TextDim}" />
         <Setter Property="Cursor" Value="Hand" />
         <Setter Property="Margin" Value="0,2" />
+        <Setter Property="FocusVisualStyle" Value="{StaticResource S.FocusVisual}" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="RadioButton">
@@ -335,6 +463,7 @@
         <Setter Property="FontSize" Value="12.5" />
         <Setter Property="Foreground" Value="{DynamicResource B.TextDim}" />
         <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="FocusVisualStyle" Value="{StaticResource S.FocusVisual}" />
         <!-- 内边距做成可覆盖的：九宫格那种自绘小格子要把 Padding 设成 0 -->
         <Setter Property="Padding" Value="14,6" />
         <Setter Property="Template">
@@ -365,6 +494,7 @@
     <Style x:Key="S.Switch" TargetType="ToggleButton">
         <Setter Property="Cursor" Value="Hand" />
         <Setter Property="Width" Value="48" />
+        <Setter Property="FocusVisualStyle" Value="{StaticResource S.FocusVisual}" />
         <Setter Property="Height" Value="28" />
         <Setter Property="SnapsToDevicePixels" Value="True" />
         <Setter Property="Template">
@@ -378,6 +508,9 @@
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsChecked" Value="True">
                             <Setter TargetName="track" Property="Background" Value="{DynamicResource B.Accent}" />
+                            <!-- 静态值兜底：位移只靠 EnterActions 动画的话，若动画被跳过
+                                 （模板在外观就绪后才应用、或系统关了动画）滑块会停在左边，"已开"却画成"关"。 -->
+                            <Setter TargetName="knob" Property="Margin" Value="23,0,0,0" />
                             <Trigger.EnterActions>
                                 <BeginStoryboard>
                                     <Storyboard>
@@ -414,6 +547,7 @@
     <!-- ============================================================ 滑杆 -->
     <Style x:Key="S.Slider" TargetType="Slider">
         <Setter Property="Height" Value="24" />
+        <Setter Property="FocusVisualStyle" Value="{StaticResource S.FocusVisual}" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="Slider">
@@ -459,6 +593,7 @@
     <!-- ============================================================ 输入框 -->
     <Style TargetType="TextBox">
         <Setter Property="FontFamily" Value="{DynamicResource F.Ui}" />
+        <Setter Property="FocusVisualStyle" Value="{StaticResource S.FocusVisual}" />
         <Setter Property="FontSize" Value="12.5" />
         <Setter Property="Background" Value="{DynamicResource B.BgSoft}" />
         <Setter Property="Foreground" Value="{DynamicResource B.Text}" />
@@ -522,6 +657,7 @@
 
     <Style TargetType="ComboBox">
         <Setter Property="FontFamily" Value="{DynamicResource F.Ui}" />
+        <Setter Property="FocusVisualStyle" Value="{StaticResource S.FocusVisual}" />
         <Setter Property="FontSize" Value="12.5" />
         <Setter Property="Foreground" Value="{DynamicResource B.Text}" />
         <Setter Property="Background" Value="{DynamicResource B.BgSoft}" />
@@ -583,6 +719,7 @@
     <!-- ============================================================ 勾选框 -->
     <Style TargetType="CheckBox">
         <Setter Property="FontFamily" Value="{DynamicResource F.Ui}" />
+        <Setter Property="FocusVisualStyle" Value="{StaticResource S.FocusVisual}" />
         <Setter Property="FontSize" Value="12.5" />
         <Setter Property="Foreground" Value="{DynamicResource B.TextDim}" />
         <Setter Property="Cursor" Value="Hand" />
@@ -619,7 +756,9 @@
         </Setter>
     </Style>
 
-    <!-- ============================================================ 滚动条（细，悬停变宽） -->
+    <!-- ============================================================ 滚动条（细，悬停变宽）
+         横向也要能用：原来只写了 Width=9 且 Thumb 的 Margin 写死成竖直方向，
+         一旦出现横向滚动条会画成"竖着的条"。现在按 Orientation 切尺寸，Track 也跟着走。 -->
     <Style TargetType="ScrollBar">
         <Setter Property="Width" Value="9" />
         <Setter Property="Background" Value="Transparent" />
@@ -627,15 +766,16 @@
             <Setter.Value>
                 <ControlTemplate TargetType="ScrollBar">
                     <Grid Background="Transparent">
-                        <Track x:Name="PART_Track" IsDirectionReversed="True">
+                        <Track x:Name="PART_Track" IsDirectionReversed="True" Orientation="{TemplateBinding Orientation}">
                             <Track.Thumb>
                                 <Thumb>
                                     <Thumb.Template>
                                         <ControlTemplate TargetType="Thumb">
-                                            <Border x:Name="tb" Background="{DynamicResource B.ScrollThumb}" CornerRadius="4" Margin="3,0" />
+                                            <!-- Margin 用四边等值：横向/竖向都正确内缩 -->
+                                            <Border x:Name="tb" Background="{DynamicResource B.ScrollThumb}" CornerRadius="4" Margin="3" />
                                             <ControlTemplate.Triggers>
                                                 <Trigger Property="IsMouseOver" Value="True">
-                                                    <Setter TargetName="tb" Property="Margin" Value="1,0" />
+                                                    <Setter TargetName="tb" Property="Margin" Value="1" />
                                                 </Trigger>
                                             </ControlTemplate.Triggers>
                                         </ControlTemplate>
@@ -650,9 +790,21 @@
                             </Track.IncreaseRepeatButton>
                         </Track>
                     </Grid>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="Orientation" Value="Horizontal">
+                            <Setter TargetName="PART_Track" Property="IsDirectionReversed" Value="False" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
                 </ControlTemplate>
             </Setter.Value>
         </Setter>
+        <!-- 属性元素必须放在所有 Setter 之后，否则 XAML 编译期报 MC3088 -->
+        <Style.Triggers>
+            <Trigger Property="Orientation" Value="Horizontal">
+                <Setter Property="Width" Value="Auto" />
+                <Setter Property="Height" Value="9" />
+            </Trigger>
+        </Style.Triggers>
     </Style>
 
     <!-- ============================================================ 密码框（跟输入框同款外观） -->
@@ -709,6 +861,7 @@
         <Setter Property="Foreground" Value="{DynamicResource B.Text}" />
         <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Disabled" />
         <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+        <!-- 容器本身不要焦点环（整块描边很吵）；键盘焦点环由 ListBoxItem 承担（见其 S.FocusVisual） -->
         <Setter Property="FocusVisualStyle" Value="{x:Null}" />
     </Style>
 
@@ -716,7 +869,7 @@
         <Setter Property="Padding" Value="0" />
         <Setter Property="Margin" Value="0,1" />
         <Setter Property="Foreground" Value="{DynamicResource B.Text}" />
-        <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+        <Setter Property="FocusVisualStyle" Value="{StaticResource S.FocusVisual}" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="ListBoxItem">

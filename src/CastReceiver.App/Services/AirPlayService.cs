@@ -364,7 +364,13 @@ public sealed class AirPlayService : IDisposable
             FrameCount++;
             if (FrameCount == 1 || FrameCount % 300 == 0)
             {
-                StatusChanged?.Invoke($"AirPlay 接收中：{FrameCount} 帧");
+                // 带上诊断数字：用户报"卡顿"时，这几个值能直接区分瓶颈在 Wi-Fi 带宽还是解码侧
+                StatusChanged?.Invoke(
+                    $"AirPlay 接收中：{FrameCount} 帧 · 积压 {session.QueuedCount} · 丢弃 {session.DroppedCount}"
+                    + (session.WaitingForKeyFrame ? " · 正在等关键帧" : ""));
+                _log.Debug("airplay",
+                    $"会话 {sessionId}：帧 {session.FrameCount}，积压 {session.QueuedCount}，丢弃 {session.DroppedCount}，"
+                    + $"重同步 {session.ResyncCount}，实测 {session.BytesReceived / 1024} KB");
             }
         }
     }
@@ -405,6 +411,18 @@ public sealed class AirPlayService : IDisposable
 
         /// <summary>这路会话收到的帧数（不管有没有被放大呈现）。</summary>
         public long FrameCount { get; internal set; }
+
+        /// <summary>这路因为跟不上而被丢掉的帧数（含重同步时清空的积压）。</summary>
+        public long DroppedCount => Video.DroppedCount;
+
+        /// <summary>这路重同步过几次（&gt;0 说明解码或网络确实跟不上过）。</summary>
+        public long ResyncCount => Video.ResyncCount;
+
+        /// <summary>这路还积压着多少帧没被解码器取走。</summary>
+        public int QueuedCount => Video.QueuedCount;
+
+        /// <summary>是否正在等关键帧（此时画面会停一下再恢复）。</summary>
+        public bool WaitingForKeyFrame => Video.WaitingForKeyFrame;
 
         /// <summary>界面标签：认不出型号就退回原始名字。</summary>
         public string Label => Identity?.ShortLabel() ?? "AirPlay 设备";

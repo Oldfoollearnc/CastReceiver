@@ -7,9 +7,14 @@
     <RootNamespace>CastReceiver.App</RootNamespace>
     <AssemblyName>投屏Window</AssemblyName>
     <ApplicationManifest>app.manifest</ApplicationManifest>
-    <Platforms>x64</Platforms>
-    <PlatformTarget>x64</PlatformTarget>
-    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <!-- 平台：默认仍产出 win-x64（x64 的构建/发布路径一字未变）。
+         RuntimeIdentifier 只在未指定时兜底，这样 `dotnet build -r win-arm64` 能交叉构建；
+         PlatformTarget 必须**跟随 RID** —— 写死 x64 会让 win-arm64 报 NETSDK1032
+         （ARM64 笔记本上跑 x64 模拟，Miracast/硬解行为不可预期，所以要留出原生构建的口子）。 -->
+    <Platforms>x64;arm64</Platforms>
+    <RuntimeIdentifier Condition="'$(RuntimeIdentifier)' == ''">win-x64</RuntimeIdentifier>
+    <PlatformTarget Condition="'$(RuntimeIdentifier)' == 'win-arm64'">arm64</PlatformTarget>
+    <PlatformTarget Condition="'$(PlatformTarget)' == ''">x64</PlatformTarget>
     <SelfContained>false</SelfContained>
     <PublishSingleFile>false</PublishSingleFile>
     <SatelliteResourceLanguages>zh-Hans;en</SatelliteResourceLanguages>
@@ -20,10 +25,11 @@
     <TieredCompilationQuickJitForLoops>true</TieredCompilationQuickJitForLoops>
     <StartupObject>CastReceiver.App.Program</StartupObject>
 
-    <!-- 版本与作者信息（会写进 exe 属性，安装包也用它） -->
-    <Version>1.1.4</Version>
-    <FileVersion>1.1.4.0</FileVersion>
-    <AssemblyVersion>1.1.4.0</AssemblyVersion>
+    <!-- 版本与作者信息（会写进 exe 属性，安装包也用它）。
+         ⚠️ 版本号**只在 ..\..\Directory.Build.props 的 <Version> 里改**：
+         这里刻意不再写 <Version>/<FileVersion>/<AssemblyVersion>，
+         否则项目级属性会覆盖 Directory.Build.props，出现"两处版本号"、
+         改了 props 却打进旧版本号的情况（MSBuild 会自动从 Version 派生 File/AssemblyVersion）。 -->
     <Product>投屏Window 桌面版</Product>
     <Company>猪猪</Company>
     <Authors>猪猪</Authors>
@@ -37,28 +43,24 @@
          这批小片段由 tools\splash-tool + ffmpeg 裁出来：1280 宽、约 7 秒、带原声。 -->
   </ItemGroup>
 
-  <!-- ⑧ 已停用（安卓 adb 无线鼠标控制）：用户要求先停用、代码保留 ——
-       adb 二进制暂时不再随程序发布。恢复时把下面这段的注释去掉即可；
-       assets\adb\ 里的文件一直都在，没有删。
-       ⑧ 原本要用的 adb：随程序带一份，用户机器上没装 Android SDK 也能用
+  <!-- 「电脑控制手机」要用的 adb：**随程序带一份**，用户机器上没装 Android SDK 也能用
        （来源：Google platform-tools，Apache-2.0，见同目录 NOTICE.txt）。
+       它同时是"绿色版直接可用"的前提：找 adb 的顺序是 自带 → PATH → SDK 常见位置。 -->
   <ItemGroup>
     <Content Include="..\..\assets\adb\adb.exe" Link="Assets\adb\adb.exe" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="..\..\assets\adb\AdbWinApi.dll" Link="Assets\adb\AdbWinApi.dll" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="..\..\assets\adb\AdbWinUsbApi.dll" Link="Assets\adb\AdbWinUsbApi.dll" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="..\..\assets\adb\NOTICE.txt" Link="Assets\adb\NOTICE.txt" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
-  -->
 
 
   <ItemGroup>
     <ProjectReference Include="..\CastReceiver.Core\CastReceiver.Core.csproj" />
   </ItemGroup>
 
-  <ItemGroup>
-    <!-- 会话锁屏通知：Win+L / 切换用户 / 屏保时自动上锁并遮挡画面 -->
-    <PackageReference Include="Microsoft.Win32.SystemEvents" Version="10.0.0" />
-  </ItemGroup>
+  <!-- 会话锁屏通知（Win+L / 切换用户 / 屏保时自动上锁并遮挡画面）用的是 BCL 自带的
+       Microsoft.Win32.SystemEvents —— .NET 10 已内置，显式 PackageReference 反而会报 NU1510，
+       所以这里不再引用（代码里的 using / 类型照旧可用）。 -->
 
   <ItemGroup>
     <Resource Include="app.ico" />

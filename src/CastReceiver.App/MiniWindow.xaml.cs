@@ -47,16 +47,18 @@ public partial class MiniWindow : Window
     private bool _pinned = true;
     private double _stripTarget;
 
-    /// <summary>控制条收起时的窗口高度（控制条出现时窗口在这个基础上长高）。</summary>
+    /// <summary>
+    /// 记住的窗口高度（用户拖动改过就以新的为准）。
+    /// 注意：控制条现在是**常驻占位**，不再有"收起/展开"两种窗口高度，所以这个值就是窗口高度本身。
+    /// </summary>
     private double _collapsedHeight;
-
-    /// <summary>控制条正在做动画：此时的高度变化是自己造成的，不能拿去更新基准高度。</summary>
-    private bool _stripAnimating;
 
     public MiniWindow()
     {
         InitializeComponent();
-        _collapsedHeight = Height;      // 构造时就是收起状态（XAML 里的高度）
+        // 控制条高度以这里的常量为准 —— 否则代码和 XAML 各写一份 34，改一处就会漂移
+        Strip.Height = StripHeight;
+        _collapsedHeight = Height;      // 窗口高度（控制条常驻占位，已无"收起/展开"两种几何）
 
         MiniHost.DoubleClicked += () => ReturnToMainRequested?.Invoke();
         MiniHost.MouseLeftButtonDown += OnVideoMouseDown;
@@ -83,14 +85,9 @@ public partial class MiniWindow : Window
         MouseEnter += (_, _) => AnimateStrip(true);
         MouseLeave += (_, _) => AnimateStrip(false);
 
-        // 用户手动改窗口大小时更新基准高度；控制条动画期间的变化要忽略
-        SizeChanged += (_, _) =>
-        {
-            if (!_stripAnimating && _stripTarget <= 0.5)
-            {
-                _collapsedHeight = Height;
-            }
-        };
+        // 用户手动改窗口大小时更新基准高度（控制条现在是常驻占位，不再有"收起/展开"两种几何，
+        // 所以这里无条件跟随当前高度即可）
+        SizeChanged += (_, _) => { _collapsedHeight = Height; };
 
         Loaded += OnLoaded;
         SourceInitialized += (_, _) => ApplyRoundedCorners();
@@ -180,46 +177,26 @@ public partial class MiniWindow : Window
 
     private void AnimateStrip(bool show)
     {
-        double target = show ? StripHeight : 0;
+        double target = show ? 1 : 0;
         if (Math.Abs(_stripTarget - target) < 0.5)
         {
             return;
         }
         _stripTarget = target;
-        _stripAnimating = true;
 
-        // 目标高度一律基于"收起状态的高度"来算，**绝不读当前的 Height** ——
-        // 动画进行中 Height 返回的是插值，鼠标快速进出几次就会越滚越大（曾滚到 286）。
-        double windowTo = show
-            ? _collapsedHeight + StripHeight
-            : Math.Max(MinHeight, _collapsedHeight);
-
-        var ease = new CubicEase { EasingMode = show ? EasingMode.EaseOut : EasingMode.EaseIn };
-        TimeSpan duration = TimeSpan.FromMilliseconds(150);
-
-        Animate(this, HeightProperty, Height, windowTo, duration, ease, () => _stripAnimating = false);
-        Animate(Strip, HeightProperty, Strip.ActualHeight, target, duration, ease, null);
-    }
-
-    /// <summary>
-    /// 先把基准值设为目标值、再用 FillBehavior.Stop 做动画：
-    /// 动画结束后属性自然停在目标值，而且不会留下"持住"的动画去挡住用户手动调整窗口大小。
-    /// </summary>
-    private static void Animate(UIElement target, DependencyProperty property, double from, double to,
-                                TimeSpan duration, IEasingFunction ease, Action? completed)
-    {
-        target.BeginAnimation(property, null);
-        target.SetValue(property, to);
-        var animation = new DoubleAnimation(from, to, duration)
+        // 只淡入淡出，**不再动高度**。
+        // 早先是把窗口高度和 Strip 高度一起做动画（收起 0 / 展开 StripHeight），
+        // 那等于每次鼠标进出都真的改变窗口尺寸 —— HwndHost 会被顶动一次，画面跳一下再重绘。
+        // 现在那 34px 常驻占位（见 MiniWindow.xaml），窗口尺寸恒定。
+        Strip.IsHitTestVisible = show;
+        double from = Strip.Opacity;
+        Strip.Opacity = target;          // 基准值先落到目标值，配合 FillBehavior.Stop 收尾
+        var fade = new DoubleAnimation(from, target, TimeSpan.FromMilliseconds(show ? 160 : 120))
         {
-            EasingFunction = ease,
+            EasingFunction = new CubicEase { EasingMode = show ? EasingMode.EaseOut : EasingMode.EaseIn },
             FillBehavior = FillBehavior.Stop,
         };
-        if (completed is not null)
-        {
-            animation.Completed += (_, _) => completed();
-        }
-        target.BeginAnimation(property, animation);
+        Strip.BeginAnimation(OpacityProperty, fade);
     }
 
     // ---------------------------------------------------------------- 交互
@@ -276,8 +253,9 @@ public partial class MiniWindow : Window
         {
             return;
         }
-        // 存"收起状态"的高度：直接存 Height 会把展开的控制条一起存进去，
-        // 下次打开就更高，每关一次长高 34px（曾这样一路爬到 286）。
+        // 存当前高度即可：控制条现在是**常驻占位**（只做淡入淡出，不再改几何），
+        // 所以 Height 不会再随鼠标进出变化。以前存的是"收起状态"的高度，
+        // 因为那会儿展开会把控制条算进高度，每关一次长高 34px（曾一路爬到 286）。
         try { PlacementChanged?.Invoke(Left, Top, Width, Math.Max(MinHeight, _collapsedHeight)); } catch { }
     }
 

@@ -1,0 +1,87 @@
+﻿投屏Window 桌面版 · 第三方声明
+版本：2.0.0
+最后更新：2026-10-11
+
+本软件使用了以下第三方组件。各组件的著作权归其各自作者所有，
+其许可条款在适用范围内继续有效。若本声明与某组件的许可条款冲突，以该组件的许可条款为准。
+
+────────────────────────────────────────
+一、随产品一起分发的组件
+────────────────────────────────────────
+1. .NET 运行时与 WPF（Microsoft Corporation）
+   许可：MIT License
+   说明：安装包内含 .NET 10 桌面运行时与 WPF，因此用户无需另行安装运行环境。
+
+2. Microsoft.Win32.SystemEvents（Microsoft Corporation）
+   许可：MIT License
+   说明：读取系统会话切换事件（锁屏时自动上锁并遮挡画面）。
+   ※ 备注：.NET 10 已内置该程序集，此 PackageReference 现为冗余（构建告警 NU1510），可移除。
+
+3. System.Security.Cryptography.ProtectedData（Microsoft Corporation / .NET Foundation）
+   许可：MIT License
+   说明：调用 Windows DPAPI 保护本机密钥材料。
+
+4. Android Debug Bridge（adb.exe、AdbWinApi.dll、AdbWinUsbApi.dll）
+   来源：Android Open Source Project（AOSP）
+   许可：Apache License 2.0
+   说明：**当前版本的安装包内不含 adb** —— 「安卓鼠标控制」功能已按需求停用，
+   其随包分发的 Content 项在 `CastReceiver.App.csproj` 中处于注释状态，
+   二进制仅保留在源码仓库的 `assets\adb\`（含完整 `NOTICE.txt`）。
+   将来恢复该功能时会重新随包分发；届时按 Apache-2.0 保留 NOTICE 即可。
+
+※ 小结：本节所列组件均为**宽松许可（MIT / Apache-2.0）**。
+  产品发布包（绿色版与安装包）内**不含任何 LGPL / GPL 组件** ——
+  原先随包链接的 LibVLCSharp 已迁到自检工程，见第二节第 5 条。
+
+────────────────────────────────────────
+二、仅用于开发/自检、**不随产品分发**的组件
+────────────────────────────────────────
+5. LibVLCSharp 3.10.1（VideoLAN / LibVLCSharp 项目）
+   许可：GNU Lesser General Public License v2.1（LGPL-2.1）
+   说明：C# 版的 libvlc 绑定。产品**不使用播放内核**（只做手机镜像接收），
+   该绑定**只在命令行自检工具（`tests/CastReceiver.SelfTest`）里引用**，
+   用于回归验证旧的播放链路；自检工具不随产品分发。
+   · 产品工程 `CastReceiver.Core` 只保留 `IMediaPlayerEngine` / `IPlaybackDiagnostics`
+     两个抽象接口，**不暴露任何 LibVLC 类型**；
+   · 因此发布包（绿色版与安装包）内既没有 `LibVLCSharp.dll`，也没有原生 libvlc
+     （可在 `发布版\投屏Window\` 下直接核实：VLC 相关文件为 0 个）；
+   · 该组件以动态链接方式使用，未修改其源码。
+
+6. VideoLAN.LibVLC.Windows 3.0.24（VideoLAN）
+   许可：GNU General Public License v2.0 or later（GPLv2+）
+   说明：原生 libvlc 二进制。**仅在 `tests/CastReceiver.SelfTest` 工程中引用**，
+   用于回归验证旧的 DLNA/播放链路。
+   ⚠️ 重要：GPL 组件**不得**进入对外发布的产品包。发布前请核对
+   `发布版\投屏Window\` 下不存在 `libvlc\` 目录或 `libvlc.dll`。
+   `build.ps1` 已包含这道检查。
+
+7. UxPlay 参考实现（开发期使用）
+   许可：GPLv3（UxPlay 项目）
+   说明：`docs/airplay-ref/` 与 `tools/airplay-port/` 下的协议规范整理与向量校验工具，
+   在**开发期**参考/编译了 UxPlay 的原始 C 源码用于验证 FairPlay 与镜像流解析。
+   这些工具**不进入发布包**。
+   ⚠️ 待开发者确认：`src/CastReceiver.Core/AirPlay/FairPlay/` 下的 FairPlay 表与算法
+   （如 `FairPlayTables.g.cs`、`HandGarble.cs`、`OmgHax.cs`）是否可视为"独立实现"。
+   若其中包含从 UxPlay（GPLv3）直接移植的代码，则需按 GPL 处理或在发布前替换为
+   独立实现，否则与"闭源分发"存在冲突。**这一条必须由开发者核实后再对外发布。**
+
+────────────────────────────────────────
+三、许可全文获取
+────────────────────────────────────────
+需要任一组件许可条款的完整文本时，请通过软件内「关于」页面所示的联系方式索取，
+或从各项目官方仓库获取：
+· MIT：https://opensource.org/licenses/MIT
+· Apache-2.0：https://www.apache.org/licenses/LICENSE-2.0
+· LGPL-2.1：https://www.gnu.org/licenses/old-licenses/lgpl-2.1.html
+· GPLv2 / GPLv3：https://www.gnu.org/licenses/
+
+【待开发者确认/补充】
+· 联系方式：QQ 2718860462
+· FairPlay 相关源码的来源与许可结论（见第 7 条）：
+  · 来源：本项目的 FairPlay 握手实现（src/CastReceiver.Core/AirPlay/FairPlay/）在代码注释中
+    明确标注为 UxPlay 的 lib/fairplay_playfair.c 的移植；其中 FairPlayConstants.g.cs 是由该
+    参考实现的源码自动生成的（生成脚本见 tools/airplay-port/extract_playfair_tables.py）。
+  · 许可结论：UxPlay 采用 GPL-3.0。上述代码若构成其衍生作品，则本项目在分发时需按 GPL-3.0
+    的要求处理（提供对应源码、采用兼容许可）。**此结论尚待作者与法律意见确认**，本文件不就此
+    作出法律判断。
+  · 备注：源码与文档之外，本项目未包含 UxPlay 的任何二进制或源码文件。

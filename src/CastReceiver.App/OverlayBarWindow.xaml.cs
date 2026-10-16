@@ -31,6 +31,10 @@ public partial class OverlayBarWindow : Window
         BtnRec.ToolTip = canCapture ? "开始/停止录制（Ctrl+Alt+R），保存为 MP4" : "手机镜像开始后才能录制";
         BtnFullscreen.Content = fullscreen ? "退出全屏" : "全屏";
         BtnFit.Content = fitName;
+        // WCAG 2.5.3：这两个按钮的文字会随状态变，名字必须跟着同步，
+        // 否则语音控制说「点击退出全屏 / 点击适应」都叫不动（名字还停在「全屏 / 画面适配」）。
+        System.Windows.Automation.AutomationProperties.SetName(BtnFullscreen, (string)BtnFullscreen.Content);
+        System.Windows.Automation.AutomationProperties.SetName(BtnFit, fitName);
         TxtZoom.Text = $"{zoom * 100:F0}%";
         // 到边界只禁用对应方向，另一个方向必须始终可用（否则"缩了就不能放大"）
         BtnZoomOut.IsEnabled = zoom > 0.5 + 0.001;
@@ -56,7 +60,7 @@ public partial class OverlayBarWindow : Window
     {
         BtnMini.Foreground = active
             ? (System.Windows.Media.Brush)FindResource("B.Accent")
-            : (System.Windows.Media.Brush)FindResource("B.TextDim");
+            : (System.Windows.Media.Brush)FindResource("B.MediaTextDim");
         BtnMini.ToolTip = active
             ? "关闭小窗（画面回到主窗口）"
             : "小窗显示画面（主窗口最小化时也会自动出现）";
@@ -67,8 +71,8 @@ public partial class OverlayBarWindow : Window
     {
         BtnRec.Content = recording ? "\uE71A" : "\uE7C8";
         BtnRec.Foreground = recording
-            ? (System.Windows.Media.Brush)FindResource("B.Bad")
-            : (System.Windows.Media.Brush)FindResource("B.TextDim");
+            ? (System.Windows.Media.Brush)FindResource("B.MediaBad")
+            : (System.Windows.Media.Brush)FindResource("B.MediaTextDim");
         BtnRec.ToolTip = recording ? "停止录制并保存" : "开始录制（Ctrl+Alt+R），保存为 MP4";
     }
 }

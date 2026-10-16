@@ -71,6 +71,34 @@ public sealed class VaultCaptureService : IDisposable
         }
     }
 
+    /// <summary>
+    /// 把**手机自己截的屏**（adb 取回来的 PNG 原始字节）写进加密库。
+    ///
+    /// 为什么不落成明文 PNG 文件：本程序从 v1.1 起就不再把任何画面写成明文（见类注释）。
+    /// 手机截屏走同一套：原字节直接加密入库，**不重新编码**（保真），查看同样要账号密码。
+    /// </summary>
+    public (bool Ok, string? Error, VaultItemInfo? Item) SavePhoneScreenshot(byte[] png, int width, int height, string? title = null)
+    {
+        var account = _vault.ActiveAccount;
+        if (account is null) return (false, "这台设备还没有归属账号", null);
+        if (png is null || png.Length == 0) return (false, "手机没有返回图片数据", null);
+        try
+        {
+            string fingerprintHash = _vault.ActiveBinding?.FingerprintHash ?? "";
+            var meta = VaultItemMeta.Screenshot(width, height, fingerprintHash, title);
+            using var writer = VaultItemWriter.Create(VaultPaths.ItemsDirectory(account.Id), account.PublicKeySpki, meta);
+            writer.AddFrame(png, VaultFrameCodec.Png);
+            var info = writer.Complete();
+            _vault.Host.Log.Info("vault", $"已加密保存一条手机截屏（{width}×{height}）");
+            return (true, null, info);
+        }
+        catch (Exception ex)
+        {
+            _vault.Host.Log.Warn("vault", $"手机截屏入库失败：{ex.Message}");
+            return (false, ex.Message, null);
+        }
+    }
+
     // ------------------------------------------------------------------ 录制
 
     public (bool Ok, string? Error) StartRecording(int width, int height)

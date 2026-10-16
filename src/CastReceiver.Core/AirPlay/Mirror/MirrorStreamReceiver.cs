@@ -125,6 +125,9 @@ public sealed class MirrorStreamReceiver : IDisposable
                 return;
             }
 
+            // 直播流：关掉 Nagle。默认开着时小包会被攒着发、还要等对端 ACK，
+            // 与延迟 ACK 叠加可平白加上几十毫秒 —— 镜像会明显"发木"。
+            try { client.NoDelay = true; } catch { }
             IsConnected = true;
             _log?.Invoke("手机已连上镜像流端口");
             try
@@ -236,7 +239,11 @@ public sealed class MirrorStreamReceiver : IDisposable
         }
         else
         {
-            frame = payload[..outLength];
+            // 这里**不要**再切一份：TryConvertAvccToAnnexB 成功时 outLength 恒等于 length
+            // （它就是"每段长度前缀都合法、加起来正好等于总长"的判据），所以 payload 本身就是
+            // 最终帧。早先写成 payload[..outLength] 等于每帧白拷一次整帧（1080p 下几十~几百 KB、
+            // 每秒约 60 次），是纯粹的分配与拷贝开销。
+            frame = payload;
         }
 
         FrameCount++;
@@ -333,6 +340,59 @@ public sealed class MirrorStreamReceiver : IDisposable
 
         outLength = pos;
         return pos == length;
+    }
+
+    /// <summary>
+    /// 判断一个 Annex-B 帧里是否含 IDR 关键帧（NAL 类型 5）。
+    ///
+    /// 用途：解码跟不上时**必须从关键帧重新起解**。盲丢最旧的那几帧会让解码器拿到
+    /// "引用了不存在帧"的数据，参考链一断就是花屏/卡顿，直到下一个关键帧才恢复。
+    /// 注意注入过 SPS/PPS 的帧前面还有 7/8，所以必须逐段扫、不能只看第一段。
+    ///
+    /// 扫描是安全的：H.264 的 emulation prevention 保证载荷内部不会出现 <c>00 00 00 01</c>。
+    /// </summary>
+    internal static bool IsKeyFrame(ReadOnlySpan<byte> annexB)
+    {
+        int pos = 0;
+        while (pos + 4 <= annexB.Length)
+        {
+            // 本程序产出的帧恒为 4 字节起始码（见 TryConvertAvccToAnnexB 与配置注入）
+            if (annexB[pos] != 0 || annexB[pos + 1] != 0 || annexB[pos + 2] != 0 || annexB[pos + 3] != 1)
+            {
+                return false;
+            }
+
+            int headerIndex = pos + 4;
+            if (headerIndex >= annexB.Length)
+            {
+                return false;
+            }
+            if ((annexB[headerIndex] & 0x1F) == 5)
+            {
+                return true;   // IDR
+            }
+
+            int next = IndexOfStartCode(annexB, headerIndex + 1);
+            if (next < 0)
+            {
+                return false;
+            }
+            pos = next;
+        }
+        return false;
+    }
+
+    /// <summary>找下一个 4 字节起始码的位置；没有则返回 -1。</summary>
+    private static int IndexOfStartCode(ReadOnlySpan<byte> data, int from)
+    {
+        for (int i = Math.Max(0, from); i + 3 < data.Length; i++)
+        {
+            if (data[i] == 0 && data[i + 1] == 0 && data[i + 2] == 0 && data[i + 3] == 1)
+            {
+                return i;
+            }
+        }
+        return -1;
     }
 
     private static async Task<bool> ReadExactAsync(NetworkStream stream, byte[] buffer, int offset, int count, CancellationToken token)

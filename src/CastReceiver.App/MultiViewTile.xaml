@@ -14,9 +14,22 @@
          叠上去会被画面盖住看不见（小窗控制条当初也是这么处理的）。
          点这一格＝把这一路放大（④）。 -->
     <Border x:Name="Chrome" Background="{DynamicResource B.Bg}"
-            BorderBrush="{DynamicResource B.Line}" BorderThickness="1" CornerRadius="10"
+            BorderThickness="1" CornerRadius="10"
             ClipToBounds="True" Cursor="Hand" MouseLeftButtonUp="Chrome_Click"
-            AutomationProperties.Name="并排画面格">
+            Focusable="True" KeyboardNavigation.IsTabStop="True" KeyDown="Chrome_KeyDown"
+            AutomationProperties.Name="并排画面格"
+            AutomationProperties.HelpText="按 Enter 或空格把这一路放大">
+        <!-- BorderBrush 走 Style 而不是内联属性：内联是本地值，会盖掉下面的焦点触发器 -->
+        <Border.Style>
+            <Style TargetType="Border">
+                <Setter Property="BorderBrush" Value="{DynamicResource B.Line}" />
+                <Style.Triggers>
+                    <Trigger Property="IsKeyboardFocusWithin" Value="True">
+                        <Setter Property="BorderBrush" Value="{DynamicResource B.Accent}" />
+                    </Trigger>
+                </Style.Triggers>
+            </Style>
+        </Border.Style>
         <Grid>
             <Grid.RowDefinitions>
                 <RowDefinition x:Name="HeaderRow" Height="26" />

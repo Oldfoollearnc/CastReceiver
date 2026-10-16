@@ -70,6 +70,7 @@ public partial class TutorialWindow : Window
         TxtStepBody.Text = body;
         StepIcon.Data = Geometry.Parse(icon);
         BtnNext.Content = _index == _steps.Length - 1 ? "开始使用" : "下一步";
+        System.Windows.Automation.AutomationProperties.SetName(BtnNext, (string)BtnNext.Content);
 
         for (int i = 0; i < Dots.Children.Count; i++)
             if (Dots.Children[i] is Ellipse e)

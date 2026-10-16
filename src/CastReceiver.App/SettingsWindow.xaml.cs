@@ -24,6 +24,19 @@ public partial class SettingsWindow : Window
     private bool _running;
     private bool _loaded;
 
+    /// <summary>
+    /// 改设备名后"重新广播"的防抖计时器。
+    /// 设备名要真正生效必须重建接收广播（约 1–3 秒），所以不能在 TextChanged 里直接做 ——
+    /// 否则每敲一个字就重建一次。停止输入 0.7 秒后才应用。
+    /// </summary>
+    private readonly System.Windows.Threading.DispatcherTimer _nameApplyTimer = new()
+    {
+        Interval = TimeSpan.FromMilliseconds(700),
+    };
+
+    /// <summary>上一次已经应用到接收端的设备名（避免重复重建广播）。</summary>
+    private string _appliedDeviceName = "";
+
     public SettingsWindow(CastAppHost host, Func<CancellationToken, Task<SelfTestItem>>? renderProbe)
     {
         InitializeComponent();
@@ -33,6 +46,8 @@ public partial class SettingsWindow : Window
 
         var s = host.Settings;
         TxtName.Text = s.DeviceName;
+        _appliedDeviceName = s.DeviceName;
+        _nameApplyTimer.Tick += NameApplyTimer_Tick;
         SwAutoStart.IsChecked = s.AutoStartMiracast;
         SwConfirm.IsChecked = s.MiracastConfirmConnection;
         SwMute.IsChecked = s.MuteAudio;
@@ -64,6 +79,15 @@ public partial class SettingsWindow : Window
         host.Notice += OnNotice;
         Closed += (_, _) =>
         {
+            _nameApplyTimer.Stop();
+            // 输入完立刻关窗去看手机时，防抖还没到点：这里补一次，别让改名白改。
+            // 宿主比本窗口活得久，关窗后再应用是安全的。
+            string pending = TxtName.Text.Trim();
+            if (_loaded && pending.Length > 0 && !string.Equals(pending, _appliedDeviceName, StringComparison.Ordinal))
+            {
+                _appliedDeviceName = pending;
+                _ = _host.ApplyDeviceNameAsync();
+            }
             host.Log.EntryWritten -= OnLogEntry;
             host.Notice -= OnNotice;
         };
@@ -73,6 +97,7 @@ public partial class SettingsWindow : Window
         SwStartup.IsChecked = StartupRegistration.IsEnabled();
         SwNotify.IsChecked = cfg.NotifyOnConnect;
         SwHotkeys.IsChecked = cfg.GlobalHotkeys;
+        RefreshHotkeyState();
         SwMica.IsChecked = cfg.UseMica;
         SwAutoFullscreen.IsChecked = cfg.AutoFullscreen;
         SwHideCursor.IsChecked = cfg.HideCursorInFullscreen;
@@ -271,6 +296,9 @@ public partial class SettingsWindow : Window
         SwShowDeviceName.IsChecked = cfg.ShowTransmitterName;
         SwTakeover.IsChecked = cfg.AllowConnectionTakeover;
         SwKeyboardBackchannel.IsChecked = cfg.KeyboardBackchannel;
+        SwAdbControl.IsChecked = cfg.AdbControlEnabled;
+        SwAdbAutoConnect.IsChecked = cfg.AdbAutoConnect;
+        ApplyAdbControlVisibility();
         SwForgetDevices.IsChecked = cfg.ForgetDeviceHistory;
         SwAntiCapture.IsChecked = cfg.AntiCapture;
         RefreshAntiCaptureState();
@@ -628,6 +656,7 @@ public partial class SettingsWindow : Window
         bool show = IntroMorePanel.Visibility != Visibility.Visible;
         IntroMorePanel.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
         BtnIntroMore.Content = show ? "收起更多设置" : "更多设置";
+        System.Windows.Automation.AutomationProperties.SetName(BtnIntroMore, (string)BtnIntroMore.Content);
     }
 
     private void BtnIntroPlay_Click(object sender, RoutedEventArgs e)
@@ -1364,6 +1393,47 @@ public partial class SettingsWindow : Window
     /// <summary>任何改动都立即生效并保存（不再需要点"保存设置"）。</summary>
     private void Setting_Changed(object sender, RoutedEventArgs e) => AutoSave();
 
+    /// <summary>
+    /// 「电脑控制手机」总开关（设置 → 安全）。**默认关闭**。
+    /// 打开才显示"投屏时自动连接"这个子项；关闭时连子项一起收起来，
+    /// 并让主界面把相关界面收掉、断开 adb（主界面每秒刷新时会自己收尾）。
+    /// </summary>
+    private void AdbControl_Changed(object sender, RoutedEventArgs e)
+    {
+        ApplyAdbControlVisibility();
+        AutoSave();
+    }
+
+    /// <summary>子项跟着总开关显隐（关闭时连分隔线一起收掉，不留空行）。</summary>
+    private void ApplyAdbControlVisibility()
+    {
+        Visibility visibility = SwAdbControl.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
+        if (RowAdbAutoConnect is not null) RowAdbAutoConnect.Visibility = visibility;
+        if (DividerAdbAutoConnect is not null) DividerAdbAutoConnect.Visibility = visibility;
+    }
+
+    /// <summary>
+    /// 把全局快捷键的真实注册结果显示在开关下面。
+    /// 这 6 个组合是 Ctrl+Alt+*，很容易被别的软件（IDE、截图工具、输入法）先占掉，
+    /// 失败时若不说，用户只会觉得"快捷键坏了"。
+    /// </summary>
+    private void RefreshHotkeyState()
+    {
+        try
+        {
+            if (SwHotkeys.IsChecked != true)
+            {
+                TxtHotkeyState.Text = "全局快捷键已关闭：快捷键不生效，界面按钮照常可用";
+                return;
+            }
+            var failed = (Application.Current.MainWindow as MainWindow)?.HotkeyFailures;
+            TxtHotkeyState.Text = failed is null || failed.Count == 0
+                ? "全局快捷键已全部生效：Ctrl+Alt+F / S / R / H / L / P"
+                : $"有 {failed.Count} 个全局快捷键被其它程序占用，按了不会有反应：" + string.Join("、", failed);
+        }
+        catch { TxtHotkeyState.Text = ""; }
+    }
+
     private void AudioTarget_Changed(object sender, System.Windows.Controls.SelectionChangedEventArgs e) => AutoSave();
 
     /// <summary>
@@ -1408,6 +1478,48 @@ public partial class SettingsWindow : Window
     {
         if (!_loaded) return;
         AutoSave();
+        // 名字要真正生效必须重建接收广播（约 1–3 秒），所以防抖：停止输入 0.7 秒后再应用
+        _nameApplyTimer.Stop();
+        _nameApplyTimer.Start();
+    }
+
+    /// <summary>失焦就立刻应用，不必等防抖 —— 用户改完名字往往马上就去看手机。</summary>
+    private void TxtName_LostFocus(object sender, RoutedEventArgs e)
+    {
+        _nameApplyTimer.Stop();
+        _ = ApplyDeviceNameToReceiverAsync();
+    }
+
+    private void NameApplyTimer_Tick(object? sender, EventArgs e)
+    {
+        _nameApplyTimer.Stop();
+        _ = ApplyDeviceNameToReceiverAsync();
+    }
+
+    /// <summary>
+    /// 把新设备名应用到**正在运行**的接收端（Miracast 重新广播 + AirPlay 重播 mDNS）。
+    /// 以前这里只把名字写进配置就完事了，接收端仍在用旧名字广播 ——
+    /// 用户看到的就是"改了名字没用，重新广播也还是旧名字"。
+    /// </summary>
+    private async Task ApplyDeviceNameToReceiverAsync()
+    {
+        if (!_loaded) return;
+        string name = TxtName.Text.Trim();
+        if (name.Length == 0 || string.Equals(name, _appliedDeviceName, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        _appliedDeviceName = name;
+        try
+        {
+            TxtSaved.Text = "正在按新设备名重新广播…";
+            TxtSaved.Text = await _host.ApplyDeviceNameAsync();
+        }
+        catch (Exception ex)
+        {
+            TxtSaved.Text = "应用设备名失败：" + ex.Message;
+        }
     }
 
     private void AutoSave()
@@ -1458,6 +1570,13 @@ public partial class SettingsWindow : Window
         s.ShowTransmitterName = SwShowDeviceName.IsChecked == true;
         s.AllowConnectionTakeover = SwTakeover.IsChecked == true;
         s.KeyboardBackchannel = SwKeyboardBackchannel.IsChecked == true;
+        s.AdbControlEnabled = SwAdbControl.IsChecked == true;
+        // 子项只在总开关打开时才写回：关掉总开关之后不该还留着"自动连接=开"，
+        // 否则下次打开总开关会突然自己连手机，用户会莫名其妙。
+        if (s.AdbControlEnabled)
+        {
+            s.AdbAutoConnect = SwAdbAutoConnect.IsChecked == true;
+        }
         s.ForgetDeviceHistory = SwForgetDevices.IsChecked == true;
         s.AntiCapture = SwAntiCapture.IsChecked == true;
         s.LockOnSessionLock = SwLockOnSessionLock.IsChecked == true;
@@ -1471,6 +1590,7 @@ public partial class SettingsWindow : Window
             mw.ApplyAntiCapture();     // 防截屏开关：改完立刻生效，不用重启
         }
         RefreshAntiCaptureState();
+        RefreshHotkeyState();
         _host.Miracast.MuteAudio = s.MuteAudio;
         _host.Miracast.PrivacyLog = s.PrivacyLog;
         _host.Miracast.AllowConnectionTakeover = s.AllowConnectionTakeover;
@@ -1681,12 +1801,21 @@ public partial class SettingsWindow : Window
         TxtUpdateResult.Text = "已保存";
     }
 
+    /// <summary>
+    /// 官方更新源。**留空＝尚未搭建**：此时「检查更新」会明确说"未配置"，而不是假装能检查。
+    /// 目前没有官方源，新版本通过作者 QQ 2718860462 发布；将来有静态托管时再填这里。
+    /// 上线前请把它填成你自己的 JSON 地址（形如 {"version":"2.0.0","url":"https://…/download"}），
+    /// 这样新用户开箱就能收到更新提示。
+    /// </summary>
+    private const string DefaultUpdateUrl = "";
+
     private async void BtnCheckUpdate_Click(object sender, RoutedEventArgs e)
     {
         string url = TxtUpdateUrl.Text.Trim();
+        if (url.Length == 0) url = DefaultUpdateUrl;      // 用户没填就用内置官方源
         if (url.Length == 0)
         {
-            TxtUpdateResult.Text = "未配置更新源（留空即不检查）";
+            TxtUpdateResult.Text = "未配置更新源：请在上方填入地址；留空则不做更新检查（新版本请通过作者 QQ 2718860462 获取）。";
             return;
         }
         BtnCheckUpdate.IsEnabled = false;
@@ -1699,8 +1828,16 @@ public partial class SettingsWindow : Window
             string latest = doc.RootElement.TryGetProperty("version", out var v) ? v.GetString() ?? "" : "";
             string page = doc.RootElement.TryGetProperty("url", out var u) ? u.GetString() ?? "" : "";
             string current = Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "1.0.0";
-            if (latest.Length == 0) { TxtUpdateResult.Text = "更新源格式不正确"; return; }
-            if (string.CompareOrdinal(latest, current) > 0)
+            if (latest.Length == 0) { TxtUpdateResult.Text = "更新源格式不正确：缺少 version 字段"; return; }
+            // 必须按版本号比，不能按字符串比：字符串比较下 "1.10.0" < "1.9.0"，
+            // 跨过大版本之后就会永远提示「已是最新」，更新通道等于失效。
+            if (!Version.TryParse(NormalizeVersion(latest), out var latestVer) ||
+                !Version.TryParse(NormalizeVersion(current), out var currentVer))
+            {
+                TxtUpdateResult.Text = $"版本号无法解析：更新源给的是「{latest}」，本机是 {current}";
+                return;
+            }
+            if (latestVer > currentVer)
             {
                 TxtUpdateResult.Text = $"发现新版本 {latest}";
                 if (page.Length > 0)
@@ -1713,6 +1850,45 @@ public partial class SettingsWindow : Window
         catch (Exception ex) { TxtUpdateResult.Text = "检查失败：" + ex.Message; }
         finally { BtnCheckUpdate.IsEnabled = true; }
     }
+
+    /// <summary>
+    /// 把更新源里的版本串规整成 Version 能解析的形式：
+    /// 去掉前缀 v、去掉 -beta 之类的后缀、不足三段补 .0。
+    /// </summary>
+    private static string NormalizeVersion(string raw)
+    {
+        string s = (raw ?? "").Trim().TrimStart('v', 'V');
+        int cut = s.IndexOfAny(new[] { '-', '+', ' ' });
+        if (cut > 0) s = s.Substring(0, cut);
+        string[] parts = s.Split('.');
+        if (parts.Length == 1 && parts[0].Length > 0) s += ".0.0";
+        else if (parts.Length == 2) s += ".0";
+        return s;
+    }
+
+    /// <summary>
+    /// 打开随包安装的法务/说明文本（由安装包的 [Files] 放进程序目录）。
+    /// 绿色版或自己编译的版本可能没有这些文件，所以找不到时给明确提示，而不是静默失败。
+    /// </summary>
+    private void OpenBundledDoc(string fileName, string what)
+    {
+        try
+        {
+            string path = System.IO.Path.Combine(AppContext.BaseDirectory, fileName);
+            if (!System.IO.File.Exists(path))
+            {
+                TxtUpdateResult.Text = $"没找到{what}（{fileName}）：安装版会在程序目录里，绿色版可能未附带。";
+                return;
+            }
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(path) { UseShellExecute = true });
+        }
+        catch (Exception ex) { TxtUpdateResult.Text = $"打开{what}失败：{ex.Message}"; }
+    }
+
+    private void BtnOpenEula_Click(object sender, RoutedEventArgs e) => OpenBundledDoc("EULA.txt", "许可协议");
+    private void BtnOpenPrivacy_Click(object sender, RoutedEventArgs e) => OpenBundledDoc("隐私政策.txt", "隐私政策");
+    private void BtnOpenThirdParty_Click(object sender, RoutedEventArgs e) => OpenBundledDoc("第三方声明.txt", "第三方声明");
+    private void BtnOpenChangelog_Click(object sender, RoutedEventArgs e) => OpenBundledDoc("CHANGELOG.md", "更新日志");
 
     protected override void OnKeyDown(KeyEventArgs e)
     {

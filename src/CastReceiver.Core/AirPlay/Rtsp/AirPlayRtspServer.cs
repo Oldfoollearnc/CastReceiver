@@ -159,6 +159,9 @@ public sealed class AirPlayRtspServer : IDisposable
 
         try
         {
+            // 控制通道全是小包（SETUP / 每秒一次的 feedback）：关掉 Nagle，
+            // 否则每个来回都要等 ACK，握手与保活会平白慢几十毫秒。
+            try { client.NoDelay = true; } catch { }
             NetworkStream stream = client.GetStream();
             while (!token.IsCancellationRequested)
             {

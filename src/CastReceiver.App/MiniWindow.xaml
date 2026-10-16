@@ -4,7 +4,7 @@
         xmlns:ctrl="clr-namespace:CastReceiver.App.Interop"
         xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
         Icon="app.ico"
-        Title="小窗" Width="384" Height="218" MinWidth="220" MinHeight="150"
+        Title="小窗" Width="384" Height="252" MinWidth="220" MinHeight="150"
         WindowStyle="None" ResizeMode="CanResize" ShowInTaskbar="False" Topmost="True"
         Background="{DynamicResource B.Bg}" Foreground="{DynamicResource B.Text}"
         FontFamily="{DynamicResource F.Ui}" WindowStartupLocation="Manual"
@@ -31,10 +31,13 @@
                  也不需要为它再开一个顶层窗口。 -->
             <ctrl:CompositionVideoHost x:Name="MiniHost" Grid.Row="0" />
 
-            <!-- 控制条：默认高度 0 收起，鼠标进入窗口时滑出 -->
-            <Border x:Name="Strip" Grid.Row="1" Height="0" ClipToBounds="True"
-                    Background="{DynamicResource B.OverlayBg}"
-                    BorderBrush="{DynamicResource B.Line}" BorderThickness="0,1,0,0">
+            <!-- 控制条：高度**常驻 34px**，鼠标进出只做淡入淡出。
+                 早先是把高度 0→34 做动画，但那会真的改变窗口尺寸、把 HwndHost 顶动一次（画面跳一下再重绘）；
+                 所以改成常驻占位 + 只动透明度：窗口尺寸恒定，画面不再抖。
+                 窗口高度同步 +34（见上面的 Height），保证视频区域仍是原来的 218。 -->
+            <Border x:Name="Strip" Grid.Row="1" Height="34" ClipToBounds="True" Opacity="0" IsHitTestVisible="False"
+                    Background="{DynamicResource B.MediaBar}"
+                    BorderBrush="{DynamicResource B.MediaLine}" BorderThickness="0,1,0,0">
                 <Grid Margin="10,0">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto" />
@@ -43,28 +46,28 @@
                     </Grid.ColumnDefinitions>
 
                     <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
-                        <Button x:Name="BtnPin" Style="{StaticResource S.BtnIcon}" Content="&#xE718;"
+                        <Button x:Name="BtnPin" Style="{StaticResource S.BtnIconMedia}" Content="&#xE718;"
                                 Width="32" Click="BtnPin_Click" ToolTip="置顶显示"
                                 AutomationProperties.Name="置顶显示" />
-                        <Button x:Name="BtnShot" Style="{StaticResource S.BtnIcon}" Content="&#xE722;"
+                        <Button x:Name="BtnShot" Style="{StaticResource S.BtnIconMedia}" Content="&#xE722;"
                                 Width="32" Click="BtnShot_Click" ToolTip="截取当前画面"
                                 AutomationProperties.Name="截屏" />
                         <!-- 多设备时才出现：在几路画面之间轮换（④） -->
-                        <Button x:Name="BtnSwitch" Style="{StaticResource S.BtnIcon}" Content="&#xE8AB;"
+                        <Button x:Name="BtnSwitch" Style="{StaticResource S.BtnIconMedia}" Content="&#xE8AB;"
                                 Width="32" Click="BtnSwitch_Click" Visibility="Collapsed"
                                 ToolTip="切换到下一台设备" AutomationProperties.Name="切换设备" />
                     </StackPanel>
 
                     <TextBlock x:Name="TxtState" Grid.Column="1" VerticalAlignment="Center"
                                HorizontalAlignment="Center" FontSize="11.5"
-                               Foreground="{DynamicResource B.TextDim}" TextTrimming="CharacterEllipsis"
+                               Foreground="{DynamicResource B.MediaTextDim}" TextTrimming="CharacterEllipsis"
                                Text="小窗" />
 
                     <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
-                        <Button x:Name="BtnHome" Style="{StaticResource S.BtnIcon}" Content="&#xE8A7;"
+                        <Button x:Name="BtnHome" Style="{StaticResource S.BtnIconMedia}" Content="&#xE8A7;"
                                 Width="32" Click="BtnHome_Click" ToolTip="回到主窗口"
                                 AutomationProperties.Name="回到主窗口" />
-                        <Button x:Name="BtnClose" Style="{StaticResource S.BtnIcon}" Content="&#xE711;"
+                        <Button x:Name="BtnClose" Style="{StaticResource S.BtnIconMedia}" Content="&#xE711;"
                                 Width="32" Click="BtnClose_Click" ToolTip="关闭小窗"
                                 AutomationProperties.Name="关闭小窗" />
                     </StackPanel>

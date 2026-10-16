@@ -54,7 +54,6 @@ public partial class MainWindow : Window
     private WindowState _prevState;
     private Rect _prevBounds;
     private string _lastSsid = "";
-    private NetInfo.WlanLink? _wlanLink;
     private bool _masked;
     private string _lastTrayTip = "";
     private DateTime? _connectingSince;
@@ -153,18 +152,15 @@ public partial class MainWindow : Window
         _capture = new VaultCaptureService(_vault, _host.Settings);
         _vault.StateChanged += () => Dispatcher.BeginInvoke(RefreshUi, DispatcherPriority.Background);
 
-        /* =====================================================================================
-           ⑧「安卓 adb 无线鼠标控制」**暂时停用**（用户要求：代码全留着，只注释掉，下次带上下文恢复）
-           —— 恢复步骤：把本文件里所有标了「⑧ 已停用」的块取消注释，
-              再把 MainWindow.xaml 里的 AdbCard 卡片、CastReceiver.App.csproj 里的 adb 资源、
-              Program.cs / App.xaml.cs 里的 --adb-discovery 自检口子一并恢复即可。
-              真机配对码那条路还没在真机上验证过（见 docs/升级-实现进度.md 第五节）。
-
-        // 鼠标控制（⑧）：adb 会话 + 画面上的鼠标动作
+        // 电脑控制手机（安卓 · adb）：会话 + 画面上的鼠标动作 + 系统键/文字/截屏
+        // ⚠️ 这个功能**默认下线**（设置 → 安全 → 电脑控制手机，默认关闭，见 AdbEnabled）。
+        //    会话对象照旧建出来（构造函数不启动任何进程，也没有线程），
+        //    但所有会真正驱动 adb / 动界面的地方都由 AdbEnabled 堵住 ——
+        //    用户在设置里打开即生效，不需要重新编译。
         _adb = new AdbWirelessSession(_host.Log);
         if (App.AdbDiscoveryFile is { Length: > 0 } discoveryFile)
         {
-            // 自检用：发现结果从文件读（模拟器广播的地址宿主机连不上，验不了"只开开关"这条链路）
+            // 自检用：发现结果从文件读（无人值守的验证里，手机是桩程序扮演的）
             _adb.DiscoveryOutputProvider = () =>
             {
                 try { return Task.FromResult(File.ReadAllText(discoveryFile)); }
@@ -193,17 +189,20 @@ public partial class MainWindow : Window
             catch (Exception ex) { sb.AppendLine("读取失败：" + ex.Message); }
             return sb.ToString();
         };
-        _adbMouseOn = _host.Settings.AdbMouseControl;
-           ===================================================================================== */
+        _adbMouseOn = AdbEnabled && _host.Settings.AdbMouseControl;
+        ApplyAdbFeatureVisibility();
 
-        // 画面上的鼠标动作（⑧）与"点格子放大"（④）都在**窗口级**接：
+        // 画面上的鼠标动作（电脑控制手机）与"点格子放大"（④）都在**窗口级**接：
         // 画面是 HwndHost 的子窗口，它对命中测试是透过的，鼠标消息既不到控件的 WndProc，
         // 也不变成控件的 WPF 事件（实测，见 CompositionInterop 的说明），只有窗口级事件收得到。
         PreviewMouseLeftButtonDown += OnStagePointerDown;
         PreviewMouseLeftButtonUp += OnStagePointerUp;
         PreviewMouseWheel += OnStagePointerWheel;
+        // 键盘直通：键也一样在窗口级接（只把"能翻译成手机输入"的键吃掉，其它键照旧给界面）
+        PreviewKeyDown += OnStageKeyDown;
 
         RestoreWindowPlacement();       // 回到上次的位置/大小（离屏则居中）
+        ClampInitialSizeToWorkArea();   // 首次运行没有历史位置时，别让 1120×720 在高缩放小屏上超出工作区
 
         LoadSettingsIntoUi();
         HookHostEvents();
@@ -303,10 +302,22 @@ public partial class MainWindow : Window
         _tray.PrivacyMaskRequested += () => Dispatcher.BeginInvoke(TogglePrivacyMask);
         _tray.Show(_host.Settings.DeviceName);
 
+        // 托盘菜单按当前状态显示勾选/禁用，所以把它需要知道的状态回读接口挂上
+        _tray.CanCaptureState = CanCapture;
+        _tray.MaskedState = () => _masked;
+        _tray.RecordingState = () => _capture?.IsRecording == true;
+        _tray.FullscreenState = () => _fullscreen;
+
         SourceInitialized += (_, _) =>
         {
             _hotkeys = new HotkeyService(this);
-            if (_host.Settings.GlobalHotkeys) _hotkeys.Register();
+            if (_host.Settings.GlobalHotkeys)
+            {
+                _hotkeys.Register();
+                // 界面完全就绪后再提示，避免在 SourceInitialized 阶段弹提示条
+                Dispatcher.BeginInvoke(new Action(ReportHotkeyConflicts),
+                    System.Windows.Threading.DispatcherPriority.Loaded);
+            }
             _hotkeys.Pressed += id => Dispatcher.BeginInvoke(() =>
             {
                 switch (id)
@@ -500,6 +511,8 @@ public partial class MainWindow : Window
             _demoCast = true;
             _host.Publish("演示模式：正在用本地样例视频代替手机镜像（用于自检截屏/录制）");
             RefreshUi();
+            // 演示模式等价于"手机已经投上来了"：自检要验的就是"投上来的那一刻自动连手机控制"这条链路
+            _ = AutoStartPhoneControlAsync();
         }
         catch (Exception ex) { _host.Log.Warn("demo", "演示模式启动失败：" + ex.Message); }
     }
@@ -608,8 +621,10 @@ public partial class MainWindow : Window
         {
             var topLeft = PointToScreen(new Point(0, 0));
             double dpi = VisualTreeHelper.GetDpi(this).DpiScaleX;
+            // 「电脑控制手机」控制条在底部时，提示条要往上让开（不然会盖住"发送/手机截屏"）
+            double barLift = _phoneBarShown && PhoneBar.ActualHeight > 0 ? (PhoneBar.ActualHeight + 8) * dpi : 0;
             double right = topLeft.X + ActualWidth * dpi - 24;
-            double bottom = topLeft.Y + ActualHeight * dpi - 24;
+            double bottom = topLeft.Y + ActualHeight * dpi - 24 - barLift;
             double maxStack = Math.Min(320, ActualHeight * dpi * 0.4);
 
             double offset = 0;
@@ -778,7 +793,6 @@ public partial class MainWindow : Window
             _recordTimer.Tick += (_, _) => OnRecordTick();
             _recordTimer.Start();
             _bar?.SetRecording(true);
-            DotRec.Fill = (System.Windows.Media.Brush)FindResource("B.Bad");
             _host.Publish("开始录制（加密写入）…再次点击停止并保存");
             ShowToast("正在录制（加密）", "再次点击录制按钮即可停止；内容加密保存在「我的库」。");
             RefreshUi();
@@ -815,7 +829,6 @@ public partial class MainWindow : Window
         _recordTimer?.Stop();
         _recordTimer = null;
         _bar?.SetRecording(false);
-        try { DotRec.Fill = (System.Windows.Media.Brush)FindResource("B.TextDim"); } catch { }
         if (_protectionPausedForRecording)
         {
             WindowProtection.ApplyToAll(true);
@@ -849,7 +862,9 @@ public partial class MainWindow : Window
         _zoom = Math.Clamp(s.MirrorZoom, 0.5, 2.0);
         BtnLatency.Content = s.LowLatency ? "延迟优先" : "画质优先";
         ApplyVolumeToHosts();
-        TxtHint.Text = "Esc 退出全屏 · F11 切换";
+        // 底栏只在窗口模式可见（全屏时 StatusBarRow 被折叠），所以这里提示 F11 进入全屏即可；
+        // 原先写的「Esc 退出全屏」在窗口模式下按了没有反应，属于误导。
+        TxtHint.Text = "F11 进入全屏";
     }
 
     private void HookHostEvents()
@@ -954,7 +969,8 @@ public partial class MainWindow : Window
             bool showName = _host.Settings.ShowTransmitterName;
             AppendEvent(showName ? $"手机已连接（{e.TransmitterName}）" : "手机已连接");
             _autoFullscreenDone = false;
-            // ⑧ 已停用：TryAutoConnectAdb();   // 安卓手机接上了，顺手把 adb 连一次
+            // 电脑控制手机（安卓）：手机一投上来就把控制准备好 —— 用户不需要点任何东西
+            _ = AutoStartPhoneControlAsync();
 
             if (_host.Settings.NotifyOnConnect)
             {
@@ -985,6 +1001,9 @@ public partial class MainWindow : Window
         _host.Miracast.StatusChanged += (_, status) => Dispatcher.BeginInvoke(() =>
         {
             _mirrorStatus = status;
+            // 这一轮投屏结束了（没有任何连接）：把"用户手动关掉控制"的记忆清掉，
+            // 下次手机再投上来才重新自动准备（否则关过一次之后就再也不自动了）。
+            if (status.ConnectionCount == 0) _phoneControlRefusedByUser = false;
             RefreshUi();
         }, DispatcherPriority.Background);
     }
@@ -1032,8 +1051,14 @@ public partial class MainWindow : Window
         FinishIntroWhenReady();    // 程序准备好了：动画放完就收场（没放完就等它）
         await PollMirrorStatusAsync();
         if (App.DemoCast) StartDemoCast();     // 演示模式：无手机也能验证截屏/录制
-        // ⑧ 已停用：RefreshAdbUi();
-        // ⑧ 已停用：TryAutoConnectAdb();      // 记过地址就直接连一次（连不上不影响投屏）
+        RefreshAdbUi();
+        // 「电脑控制手机」默认下线：启动时也不去碰 adb（不连、不预热）
+        if (AdbEnabled)
+        {
+            if (_adbMouseOn) _ = TryAutoConnectAdbAsync();   // 开关是开的（含上次自动打开的）就直接连一次
+            // 预热 adb server：省掉"第一次调用 adb"那几百毫秒到一秒多的启动等待
+            if (_host.Settings.AdbAutoConnect) _ = _adb.WarmUpAsync();
+        }
 
         // 首次启动的使用引导：别和入场动画抢画面，等动画收场后再放
         if (_introActive) _pendingTutorial = true;
@@ -1495,7 +1520,7 @@ public partial class MainWindow : Window
         _cursorTimer.Stop();
         try { _bar?.Close(); } catch { }
         try { _stats?.Close(); } catch { }
-        // ⑧ 已停用：try { _adbWindow?.Close(); } catch { }
+        try { _adbWindow?.Close(); } catch { }
         try { _mini?.Close(); } catch { }
         _mini = null;
 
@@ -1516,14 +1541,12 @@ public partial class MainWindow : Window
 
     private void BtnMinimize_Click(object sender, RoutedEventArgs e) => WindowState = WindowState.Minimized;
 
-    private void BtnShot_Click(object sender, RoutedEventArgs e) => TakeScreenshot();
-    private void BtnRec_Click(object sender, RoutedEventArgs e) => ToggleRecording();
+    /// <summary>「我的库」：侧栏「本次投屏」卡片里的入口还在用这个处理器。</summary>
     private void BtnOpenVault_Click(object sender, RoutedEventArgs e) => OpenVault();
 
-    private void BtnWizard_Click(object sender, RoutedEventArgs e)
-    {
-        try { new DiagnosticWizard(_host) { Owner = this }.ShowDialog(); } catch { }
-    }
+    // 截屏 / 录制 / 一键诊断三个磁贴随「快捷操作」卡片一起按需求删除，对应的事件处理器也一并去掉。
+    // 功能没有丢：截屏 Ctrl+Alt+S、录制 Ctrl+Alt+R、托盘菜单、画面下方常驻的悬浮控制条都还在；
+    // 一键诊断在 设置 → 诊断 →「一键连接诊断」。
 
     private void BtnMaximize_Click(object sender, RoutedEventArgs e)
     {
@@ -1569,7 +1592,7 @@ public partial class MainWindow : Window
         App.ApplyTheme(next);          // 立即生效并记住
         UpdateAppearanceIcon();
         ShowToast(next == "Light" ? "已切换到浅色外观" : "已切换到深色外观",
-            "左键点这里随时切换；右键点这里打开设置。");
+            "点这里随时切换；要改外观档位或其它设置，点旁边的齿轮。");
     }
 
     /// <summary>右键：直接打开设置（外观的三档选择在 设置 → 通用 → 外观）。</summary>
@@ -1673,10 +1696,43 @@ public partial class MainWindow : Window
     {
         try
         {
-            if (enabled) _hotkeys?.Register();
+            if (enabled)
+            {
+                _hotkeyConflictReported = false;   // 用户主动改设置时允许再提醒一次
+                _hotkeys?.Register();
+                ReportHotkeyConflicts();
+            }
             else _hotkeys?.Unregister();
         }
         catch { }
+    }
+
+    /// <summary>注册失败的全局快捷键（空＝全部可用）。设置页用它显示真实状态。</summary>
+    public IReadOnlyList<string> HotkeyFailures
+    {
+        get
+        {
+            if (!_host.Settings.GlobalHotkeys) return Array.Empty<string>();
+            return _hotkeys?.FailedCombos ?? Array.Empty<string>();
+        }
+    }
+
+    private bool _hotkeyConflictReported;
+
+    /// <summary>
+    /// 快捷键被别的程序占用时如实告知。此前 a||b||c… 一个成功就算注册成功，
+    /// 失败被静默吞掉，而 tooltip 照样写着「Ctrl+Alt+S」，用户按了没反应也查不出原因。
+    /// </summary>
+    private void ReportHotkeyConflicts()
+    {
+        if (_hotkeyConflictReported) return;
+        var failed = _hotkeys?.FailedCombos;
+        if (failed is null || failed.Count == 0) return;
+        _hotkeyConflictReported = true;
+        try { _host.Log.Warn("hotkey", "全局快捷键注册失败：" + string.Join("、", failed)); } catch { }
+        ShowToast("有快捷键没能注册",
+            $"{string.Join("、", failed)} 已被其它程序占用。可在设置里关掉「全局快捷键」，改用界面按钮操作。",
+            null, null, ok: false);
     }
 
     /// <summary>云母材质背景（Win11）；失败时自动回退为纯色。</summary>
@@ -1722,9 +1778,10 @@ public partial class MainWindow : Window
             if (_masked) return;
             _masked = true;
             TxtMaskTitle.Text = reason ?? "画面已遮挡";
-            TxtMaskHint.Text = "投屏仍在进行 · 点一下继续查看";
+            TxtMaskHint.Text = "投屏仍在进行 · 点一下或按 Ctrl+Alt+P 恢复";
             ApplyStageVisibility();          // HwndHost 盖不住，只能先把所有画面宿主收起来
             PrivacyMask.Visibility = Visibility.Visible;
+            PrivacyMask.Focus();             // 遮挡后把焦点交给面板，键盘用户按 Enter/空格即可恢复
             _host.Log.Info("privacy", "画面已遮挡");
         }
         catch { }
@@ -1749,7 +1806,8 @@ public partial class MainWindow : Window
         else ShowPrivacyMask();
     }
 
-    private void PrivacyMask_Click(object sender, System.Windows.Input.MouseButtonEventArgs e) => HidePrivacyMask();
+    // Button.Click：鼠标点击与键盘 Enter/空格都会走到这里
+    private void PrivacyMask_Click(object sender, System.Windows.RoutedEventArgs e) => HidePrivacyMask();
 
     /// <summary>锁屏 / 切换用户 / 断开远程会话：立即上锁并遮挡画面。</summary>
     private void OnSessionSwitch(object sender, Microsoft.Win32.SessionSwitchEventArgs e)
@@ -1779,7 +1837,9 @@ public partial class MainWindow : Window
         try
         {
             BtnRefreshBroadcast.IsEnabled = false;
-            bool ok = await _host.Miracast.RefreshBroadcastAsync();
+            // 用**设置里的当前名字**刷新：早先这里读的是接收端内部的旧快照，
+            // 于是"改完名字点刷新广播"仍然是旧名字（用户报的就是这个现象）。
+            bool ok = await _host.Miracast.RefreshBroadcastAsync(_host.Settings.DeviceName);
             await PollMirrorStatusAsync();
             RefreshUi();
             ShowToast(ok ? "接收广播已刷新" : "刷新失败",
@@ -1930,8 +1990,6 @@ public partial class MainWindow : Window
                 return (l, c, f);
             });
             string? hotspot = await Task.Run(NetInfo.DetectHotspotConflict);
-            var wlan = await Task.Run(NetInfo.ReadWlanLink);      // 频段/速率：判断"为什么卡"的关键信息
-            if (wlan is not null) _wlanLink = wlan;
             if (_lastSsid.Length == 0 && lan is not null)
             {
                 string? ssid = await Task.Run(NetInfo.GetWlanSsid);
@@ -1973,25 +2031,23 @@ public partial class MainWindow : Window
         SyncMultiView("定时补挂");
         RefreshTileStates();
 
-        /* ⑧ 已停用（安卓鼠标控制）：
-        // 鼠标控制（⑧）：每 5 秒确认一次手机还在不在
-        if (++_adbPollTicks % 5 == 0)
+        // 电脑控制手机：连上后每 5 秒确认一次手机还在不在
+        // （功能关闭时不碰 adb：那是唯一一处"无条件起 adb 进程"的轮询）
+        if (AdbEnabled && ++_adbPollTicks % 5 == 0)
         {
             _ = _adb.RefreshAsync(full: false);
-            // 开着开关但还没连上：每 10 秒再自动找一次手机（用户什么都不用填）
-            if (_adbMouseOn && !_adb.IsConnected && _adbPollTicks % 10 == 0)
-            {
-                TryAutoConnectAdb();
-            }
         }
 
-        // 开着鼠标控制时每 4 秒重读一次屏幕尺寸/旋转：手机转了以后坐标才不会一直按旧尺寸算
+        // 还没连上就按"先快后慢"的节奏重试（刚投屏上来那几秒最要紧）
+        TickPhoneControl();
+
+        // 开着控制时每 4 秒重读一次屏幕尺寸/旋转：手机转了以后坐标才不会一直按旧尺寸算
         if (_adbMouseOn && _adb.IsConnected && _adbPollTicks % 4 == 0)
         {
             _ = _adb.RefreshScreenAsync();
         }
+
         RefreshAdbUi();
-        */
 
         UpdateStats();
         RefreshUi();
@@ -2096,6 +2152,10 @@ public partial class MainWindow : Window
     {
         if (_closing) return;
 
+        // 托盘提示跟着设备名走：以前只在"断开"那一条路径里刷过，
+        // 于是设置里改了名字之后，托盘上一直挂着旧名字。
+        _tray?.UpdateTooltip($"投屏Window · {_host.Settings.DeviceName}");
+
         bool listening = _host.Miracast.IsListening;
         bool mirroring = AnyMirroring;
         bool pending = _mirrorStatus.ListeningStatus.Contains("Pending", StringComparison.OrdinalIgnoreCase);
@@ -2103,32 +2163,8 @@ public partial class MainWindow : Window
                             && _host.FirewallRulePresent;
         bool hotspot = !string.IsNullOrEmpty(_host.HotspotConflict);
 
-        TxtSetDevice.Text = _host.Settings.DeviceName;
-
-        // Wi-Fi 一行显示频段与协商速率：投屏卡不卡，八成取决于这两个数
-        if (_wlanLink is { } wlan)
-        {
-            TxtSetWifi.Text = $"{(_lastSsid.Length > 0 ? _lastSsid : wlan.Ssid)} · {wlan.ShortText}";
-            TxtSetWifi.ToolTip = wlan.DetailText;
-            TxtSetWifi.Foreground = (System.Windows.Media.Brush)FindResource(wlan.Is24G ? "B.Warn" : "B.Text");
-        }
-        else
-        {
-            TxtSetWifi.Text = _lastSsid.Length > 0 ? _lastSsid : (_host.Lan is null ? "未联网" : _host.Lan.Address.ToString());
-            TxtSetWifi.ToolTip = null;
-            TxtSetWifi.Foreground = (System.Windows.Media.Brush)FindResource("B.Text");
-        }
-
-        // 键盘回传（UIBC）：能不能用取决于手机是否愿意接收，把状态直接摊给用户看
-        string kbState = _host.Miracast.EffectiveKeyboardState;
-        TxtSetKeyboard.Text = kbState;
-        TxtSetKeyboard.Foreground = (System.Windows.Media.Brush)FindResource(kbState switch
-        {
-            "正在发送" or "已开启" => "B.Ok",
-            "手机未请求" => "B.Warn",
-            "等待连接" => "B.TextDim",
-            _ => "B.TextFaint",
-        });
+        // 「当前设置」卡片已按需求删除：设备名称 / Wi-Fi 频段与速率 / 加密库状态 / 键盘回传
+        // 都改在设置窗口里看（TxtSetDevice、TxtSetWifi、TxtSetVault、TxtSetKeyboard 已从 MainWindow.xaml 移除）。
 
         // 空闲时给一个"刷新广播"入口（手机搜不到设备时点它，等价于重启程序那一下）
         BtnRefreshBroadcast.Visibility = (!mirroring && listening && !_mirrorBusy)
@@ -2261,20 +2297,13 @@ public partial class MainWindow : Window
             }
         }
 
-        // 侧栏回显（截屏/录制按钮也随是否在镜像而启用）
-        var cfgNow = _host.Settings;
-        bool canCap = mirroring || _demoCast;
-        BtnShot.IsEnabled = canCap;
-        BtnRec.IsEnabled = canCap;
-        BtnShot.ToolTip = canCap ? "截取当前镜像画面（加密存入我的库）" : "手机镜像开始后才能截屏";
-
-        // 加密库状态：归属账号 + 是否已解锁（让用户随时知道内容会进谁的库）
+        // 加密库状态：归属账号（卡片上的「加密库」一行已随「当前设置」卡片一起删除，
+        // 解锁状态与归属在看库/绑定时给出，这里只保留状态卡里的「内容归属」）
         if (_vault is not null)
         {
             string owner = _vault.ActiveAccount?.DisplayName
                            ?? (_vault.HasAccount ? "未绑定设备" : "未创建账号");
             TxtOwner.Text = owner;
-            TxtSetVault.Text = (_vault.IsUnlocked ? "已解锁" : "已上锁") + (_vault.HasAccount ? "" : "（无账号）");
         }
 
         // 托盘提示跟着状态走（只在变化时更新，避免每秒调一次 Shell_NotifyIcon）
@@ -2341,7 +2370,6 @@ public partial class MainWindow : Window
             try { TipIcon.Data = System.Windows.Media.Geometry.Parse(page.Icon); } catch { }
             TxtTipTitle.Text = page.Title;
             TxtTipBody.Text = page.Body;
-            TxtTipPage.Text = $"{index + 1} / {count}";
             for (int i = 0; i < TipDots.Children.Count; i++)
                 if (TipDots.Children[i] is System.Windows.Controls.Button { Content: System.Windows.Shapes.Ellipse dot })
                     dot.Fill = (System.Windows.Media.Brush)FindResource(i == index ? "B.Accent" : "B.Line");
@@ -2622,6 +2650,23 @@ public partial class MainWindow : Window
         catch { }
     }
 
+    /// <summary>
+    /// 把初始尺寸限制在工作区内。
+    /// 起因：窗口默认 1120×720，而 WPF 的尺寸单位是 DIP —— 1366×768 在 150% 缩放下只有 910×512 DIP，
+    /// 1920×1080 在 200% 缩放下只有 960×540 DIP，默认尺寸会整块超出屏幕，右上角关闭键点不到。
+    /// 最小尺寸本身也已下调（MinWidth 1024→880 / MinHeight 576→520），否则钳制会被 Min 值顶回去。
+    /// </summary>
+    private void ClampInitialSizeToWorkArea()
+    {
+        try
+        {
+            Rect work = SystemParameters.WorkArea;
+            Width = Math.Clamp(Width, MinWidth, Math.Max(MinWidth, work.Width));
+            Height = Math.Clamp(Height, MinHeight, Math.Max(MinHeight, work.Height));
+        }
+        catch { }
+    }
+
     /// <summary>退出时记住窗口位置/大小（最大化时记还原后的尺寸）。</summary>
     private void SaveWindowPlacement()
     {
@@ -2800,7 +2845,7 @@ public partial class MainWindow : Window
         ApplyFillMode();
         _host.Settings.MirrorFit = fit.ToString();
         _host.Settings.Save();
-        TxtHint.Text = $"画面：{FitName(fit)}" + (_zoom != 1.0 ? $" · {_zoom * 100:F0}%" : "") + " · Esc 退出全屏 · F11 切换";
+        TxtHint.Text = $"画面：{FitName(fit)}" + (_zoom != 1.0 ? $" · {_zoom * 100:F0}%" : "") + " · F11 进入全屏";
         SyncBar();
     }
 
@@ -2812,7 +2857,7 @@ public partial class MainWindow : Window
         ApplyFillMode();
         _host.Settings.MirrorZoom = _zoom;
         _host.Settings.Save();
-        TxtHint.Text = $"画面：{FitName(_fit)}" + (_zoom != 1.0 ? $" · {_zoom * 100:F0}%" : "") + " · Esc 退出全屏 · F11 切换";
+        TxtHint.Text = $"画面：{FitName(_fit)}" + (_zoom != 1.0 ? $" · {_zoom * 100:F0}%" : "") + " · F11 进入全屏";
         SyncBar();
     }
 
@@ -3296,36 +3341,27 @@ public partial class MainWindow : Window
         catch { }
     }
 
-    // ------------------------------------------------------------------ 鼠标控制（⑧，安卓 adb）—— 暂时停用
+    // ------------------------------------------------------------------ 画面上的鼠标（④ 与「电脑控制手机」共用）
     //
-    // 用户要求：这个功能先停用，但**代码全部留着**（注释掉而不是删掉），下次带上下文恢复。
-    // 下面这段 `/* ⑧ 的完整实现 */` 就是原样保留的代码；
-    // 恢复时把它取消注释，并同步恢复：
-    //   · MainWindow.xaml 里的 AdbCard 卡片（搜索「⑧ 已停用」）
-    //   · CastReceiver.App.csproj 里 assets\adb 的资源拷贝（搜索「⑧ 已停用」）
-    //   · Program.cs / App.xaml.cs 里的 --adb-discovery 自检口子（搜索「⑧ 已停用」）
-    //   · Core/Android/* 一直都在，没有动过（自检 --android-only 也还在）
-    // 未验证的遗留：真机上的配对码配对流程、真机横屏（见 docs/升级-实现进度.md 第五节）。
+    // 这两个功能的鼠标入口是**同一处**：画面是 HwndHost 子窗口，它对命中测试是透过的 ——
+    // 鼠标消息既不到控件的 WndProc，也不变成控件的 WPF 事件（实测，见 CompositionInterop 的说明），
+    // 只有**窗口级**事件收得到，所以在构造函数里一次性挂在窗口上。
+    // 判优先级：点在并排的其它格子上＝切那一路（④）；点在主画面上＝控制手机。
 
-    // 卡片虽然折叠了（用户看不到），XAML 里仍挂着这两个事件；留空壳免得 XAML 编译不过。
-    // 真正的实现在下面那段注释里（同名，取消注释时把这两个空壳删掉）。
-    private void SwAdbMouse_Changed(object sender, RoutedEventArgs e) { }
-    private void BtnAdbConnect_Click(object sender, RoutedEventArgs e) { }
-
-    /// <summary>按下时点在某一格上：抬起时把这一路放大（④，与 ⑧ 无关，继续保留在生效）。</summary>
+    /// <summary>按下时点在某一格上：抬起时把这一路放大（④）。</summary>
     private string? _pendingTileFocus;
 
     /// <summary>
-    /// 画面上的鼠标按下：点到并排的某一格＝把这一路放大（④）。
-    /// （原来这里还有 ⑧ 的"记下起点供点击/拖动判断"，已随 ⑧ 一起停用。）
+    /// 画面上的鼠标按下：点到并排的某一格＝把这一路放大（④）；
+    /// 点在主画面上＝记下起点，供"点按 vs 拖动"判断（电脑控制手机）。
     /// </summary>
     private void OnStagePointerDown(object sender, MouseButtonEventArgs e)
     {
         try
         {
-            // ⑧ 已停用：_adbDownPoint = null;
+            _adbDownPoint = null;
 
-            // 先看是不是点在某个"非主画面"的格子上（那时是切换，不是鼠标控制）
+            // 先看是不是点在某个"非主画面"的格子上（那时是切换，不是控制手机）
             foreach ((string id, MultiViewTile tile) in _tiles)
             {
                 if (tile.IsMain) continue;
@@ -3336,18 +3372,16 @@ public partial class MainWindow : Window
                 }
             }
 
-            /* ⑧ 已停用：
-            if (!AdbMouseReady(out _, out _)) return;
+            if (!PhoneControlReady(out _, out _)) return;
             if (!InsideHost(MiracastHost, e.GetPosition(MiracastHost))) return;
 
             _adbDownPoint = e.GetPosition(MiracastHost);
             _adbDownAt = DateTime.UtcNow;
-            */
         }
         catch { }
     }
 
-    /// <summary>鼠标抬起：点在格子上＝放大该路（④）。（⑧ 的"点按/拖动"已随 ⑧ 停用。）</summary>
+    /// <summary>鼠标抬起：格子＝放大该路；主画面＝点按或滑动（拖动）。</summary>
     private void OnStagePointerUp(object sender, MouseButtonEventArgs e)
     {
         try
@@ -3359,18 +3393,16 @@ public partial class MainWindow : Window
                 return;
             }
 
-            /* ⑧ 已停用：
             if (_adbDownPoint is not { } down) return;
             _adbDownPoint = null;
 
-            if (!AdbMouseReady(out AndroidInput? input, out AndroidScreen? screen)) return;
+            if (!PhoneControlReady(out AndroidInput? input, out AndroidScreen? screen)) return;
             if (!InsideHost(MiracastHost, e.GetPosition(MiracastHost))) return;
 
             VideoBox box = PrimaryVideoBox();
             Point up = e.GetPosition(MiracastHost);
             HandleAdbClickOrDrag(input!, screen!, box, down, up);
             e.Handled = true;
-            */
         }
         catch (Exception ex)
         {
@@ -3378,13 +3410,12 @@ public partial class MainWindow : Window
         }
     }
 
-    /// <summary>滚轮：⑧ 停用后这里什么都不做（保留挂接，恢复时接回去即可）。</summary>
+    /// <summary>滚轮：在画面上滚动＝手机上滑动一下。</summary>
     private void OnStagePointerWheel(object sender, MouseWheelEventArgs e)
     {
-        /* ⑧ 已停用：
         try
         {
-            if (!AdbMouseReady(out AndroidInput? input, out AndroidScreen? screen)) return;
+            if (!PhoneControlReady(out AndroidInput? input, out AndroidScreen? screen)) return;
             Point at = e.GetPosition(MiracastHost);
             if (!InsideHost(MiracastHost, at)) return;
 
@@ -3395,7 +3426,6 @@ public partial class MainWindow : Window
         {
             _host.Log.Debug("adb", $"滚轮处理异常：{ex.Message}");
         }
-        */
     }
 
     /// <summary>某个位置是不是落在这个画面宿主里（宿主尺寸为 0 时一律算"不在"）。</summary>
@@ -3424,26 +3454,38 @@ public partial class MainWindow : Window
         _ => VideoFitMode.Fit,
     };
 
-    /* =========================================================================================
-       以下为 ⑧「安卓 adb 无线鼠标控制」的完整实现，暂时整段停用（原样保留，恢复时取消注释即可）
-       =========================================================================================
-    // ------------------------------------------------------------------ 鼠标控制（⑧，安卓 adb）
+    // =========================================================================================
+    // 电脑控制手机（安卓 · adb）
+    //
+    // 一条链路：投屏画面告诉我们手机屏幕长什么样 → 鼠标坐标换算成手机坐标（ScreenCoordinateMapper）
+    //          → 通过 adb 把点按/滑动/按键/文字注入手机；截屏是反方向（exec-out screencap）。
+    //
+    // 连接怎么做到"不麻烦"（上一版 ⑧ 就是因为"连接这一步太麻烦"被停用的）：
+    //   1) **插着数据线** → `adb devices` 里直接就有，不需要配对（最快的一条路）；
+    //   2) 无线调试 → mDNS 自动发现 + 自动连接，用户一个地址都不用填；
+    //   3) 从没配对过 → 直接把配对窗口打开（IP 与配对端口已自动填好），只差手机上那 6 位码。
+    // =========================================================================================
 
     private readonly AdbWirelessSession _adb;
 
-    /// <summary>鼠标控制开关（从设置读，改动即存）。</summary>
+    /// <summary>
+    /// 「电脑控制手机」是否可用 = 产品里保留了该功能（<see cref="Features.AndroidRemoteControl"/>）
+    /// **且**用户在设置里打开了（<c>CastSettings.AdbControlEnabled</c>，默认关闭）。
+    ///
+    /// 所有会驱动 adb 或显示相关界面的地方都只看这一个属性，
+    /// 于是"用户在设置里开/关"就是唯一的开关，且关掉后程序完全不碰 adb。
+    /// </summary>
+    private bool AdbEnabled => Features.AndroidRemoteControl && _host.Settings.AdbControlEnabled;
+
+    /// <summary>「电脑控制手机」总开关（从设置读，改动即存）。</summary>
     private bool _adbMouseOn;
+
+    /// <summary>键盘直通：键盘上敲的英文/数字直接进手机（中文请用控制条上的输入框）。</summary>
+    private bool _phoneKeyboardOn;
 
     /// <summary>鼠标左键按下的位置（宿主 DIP 坐标）与时刻：用来区分"点击"和"拖动"。</summary>
     private Point? _adbDownPoint;
     private DateTime _adbDownAt;
-
-    /// <summary>按下时点在某一格上：抬起时把这一路放大（④）。</summary>
-    private string? _pendingTileFocus;
-
-    /// <summary>已经注入到手机的触摸次数（界面上如实显示，也是自检的证据之一）。</summary>
-    private int _adbTaps;
-    private int _adbSwipes;
 
     /// <summary>自动重连节流（每 5 秒最多查一次设备在不在）。</summary>
     private int _adbPollTicks;
@@ -3451,12 +3493,69 @@ public partial class MainWindow : Window
     /// <summary>连接窗口是否开着（避免开出两个）。</summary>
     private AdbConnectWindow? _adbWindow;
 
-    /// <summary>界面刷新：状态点、状态文字、注入计数。</summary>
+    /// <summary>已经提示过一次配对引导（避免每次刷新都弹）。</summary>
+    private bool _pairPromptShown;
+
+    private bool _suppressAdbToggle;
+    private bool _suppressPhoneKeyboardToggle;
+
+    // 注入**排队**执行：打字过程中按下回车，绝不能出现"先回车、后字"这种顺序错乱
+    // （每个注入都是一次独立的 adb 进程，不排队就会各跑各的）。
+    private readonly object _phoneInputGate = new();
+    private Task _phoneInputChain = Task.CompletedTask;
+
+    /// <summary>键盘直通的字符缓冲：攒一小会儿合成一条 input text（一次 adb 进程几十毫秒，逐字发会明显卡）。</summary>
+    private readonly StringBuilder _typingBuffer = new();
+    private DispatcherTimer? _typingFlushTimer;
+    private bool _typingFlushWired;
+
+    // ------------------------------------------------------------------ 界面刷新
+
+    /// <summary>
+    /// 按总开关决定「电脑控制手机」那几块界面出不出现。
+    /// 关闭时**整块不占位**（Collapsed 会把它从布局里摘掉，侧栏不会留空档）。
+    /// </summary>
+    private void ApplyAdbFeatureVisibility()
+    {
+        if (AdbCard is null || PhoneBar is null || BtnAdbConnect is null) return;
+        Visibility visibility = AdbEnabled ? Visibility.Visible : Visibility.Collapsed;
+        AdbCard.Visibility = visibility;
+        // 外层的滚动区一起收掉：只收卡片会留下一条空的滚动区域
+        if (AdbScroll is not null) AdbScroll.Visibility = visibility;
+        BtnAdbConnect.Visibility = visibility;
+        // 控制条本来就要"连上手机才出现"，关闭时永远收起
+        PhoneBar.Visibility = AdbEnabled && _phoneBarShown
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+    }
+
+    /// <summary>界面刷新：状态点、状态文字、注入计数、控制条显隐。</summary>
     private void RefreshAdbUi()
     {
-        if (_closing) return;
+        if (_closing || DotAdb is null) return;
+
+        // 功能关闭：三块界面直接不出现，也不再读任何 adb 状态。
+        // 用户是"刚把开关关掉"的情况在这里收尾（停注入、停键盘直通、断开 adb），
+        // 这样关掉开关就真的不碰手机了，而不是留一条半活的连接。
+        if (!AdbEnabled)
+        {
+            if (_adbMouseOn || _phoneKeyboardOn)
+            {
+                _adbMouseOn = false;
+                _phoneControlRefusedByUser = false;
+                StopPhoneKeyboard("「电脑控制手机」已关闭");
+                _ = _adb.DisconnectAsync();
+                AppendEvent("「电脑控制手机」已关闭（可在 设置 → 安全 里重新打开）");
+            }
+            ApplyAdbFeatureVisibility();
+            return;
+        }
+
         try
         {
+            // 用户刚在设置里把开关打开时，这块界面要自己冒出来（下面只改控制条）
+            ApplyAdbFeatureVisibility();
+
             string dot = _adb.State switch
             {
                 AdbLinkState.Connected => "B.Ok",
@@ -3468,16 +3567,49 @@ public partial class MainWindow : Window
             DotAdb.SetResourceReference(System.Windows.Shapes.Shape.FillProperty, dot);
             TxtAdbState.Text = _adb.StatusText;
 
-            string counts = $"已发送 {_adbTaps + _adbSwipes} 次（点按 {_adbTaps} · 滑动 {_adbSwipes}）";
+            AndroidInput? input = _adb.Input;
+            int taps = input?.TapCount ?? 0, swipes = input?.SwipeCount ?? 0;
+            int keys = input?.KeyCount ?? 0, texts = input?.TextCount ?? 0;
+            string counts = $"已发送 {taps + swipes + keys + texts} 次（点按 {taps} · 滑动 {swipes} · 按键 {keys} · 文字 {texts}）";
             if (!_adbMouseOn) counts += " · 开关已关";
             else if (!_adb.IsConnected) counts += " · 未连接手机";
             TxtAdbInjected.Text = counts;
+
+            // 中文能不能发，是用户最先会问的事：连上后就把结论写在这里，别让他试出来
+            TxtAdbHint.Text = !_adb.IsConnected
+                ? "投屏后在画面上点击＝点按手机；这里还能发文字和系统键"
+                : _adb.AdbKeyboardInstalled
+                    ? "画面上点击＝点按手机；中文与英文都能直接发到手机"
+                    : "画面上点击＝点按手机；英文数字可直接发，中文需要手机装 ADBKeyboard 输入法";
 
             _suppressAdbToggle = true;
             SwAdbMouse.IsChecked = _adbMouseOn;
             _suppressAdbToggle = false;
 
-            BtnAdbConnect.Content = _adb.IsConnected ? "连接设置 / 断开…" : "配对 / 其它手机…";
+            // 控制条：开关开着 + 连上手机 + 主画面是安卓这一路，才出现
+            bool barVisible = _adbMouseOn && _adb.IsConnected && MiracastPrimary && !_masked;
+            PhoneBar.Visibility = barVisible ? Visibility.Visible : Visibility.Collapsed;
+            if (barVisible != _phoneBarShown)
+            {
+                // 控制条出现/消失会改变画面区高度，浮在画面底部的控制条要跟着挪，
+                // 否则两条会叠在一起（实测：文字输入框与「全屏/适应」那条重叠，谁都点不到）
+                _phoneBarShown = barVisible;
+                Dispatcher.BeginInvoke(() => { PositionBar(); RelayoutToasts(); }, DispatcherPriority.Loaded);
+            }
+            if (barVisible)
+            {
+                string name = _adb.Device?.Model ?? _adb.Device?.Serial ?? "手机";
+                TxtPhoneBarState.Text = $"{name} · {(_adb.IsUsbConnection ? "数据线" : "无线")}";
+            }
+
+            _suppressPhoneKeyboardToggle = true;
+            SwPhoneKeyboard.IsChecked = _phoneKeyboardOn && barVisible;
+            _suppressPhoneKeyboardToggle = false;
+
+            string adbButtonText = _adb.IsConnected ? "连接设置 / 断开…" : "配对 / 其它手机…";
+            BtnAdbConnect.Content = adbButtonText;
+            // WCAG 2.5.3：名字跟着可见文字走（两个状态都要能被语音控制叫到）
+            System.Windows.Automation.AutomationProperties.SetName(BtnAdbConnect, adbButtonText);
 
             // 发现了手机但连不上、而且从来没配对过：直接把人领到配对那一步
             // （没配对时手机一定拒绝连接，继续"正在连接→失败"地转圈只会让人以为程序坏了）
@@ -3486,35 +3618,50 @@ public partial class MainWindow : Window
                 _pairPromptShown = true;
                 AppendEvent("这台手机还没和本机配对过：请在手机上点「无线调试 → 使用配对码配对设备」");
                 ShowToast("还差一次配对", "在手机「无线调试」里点「使用配对码配对设备」，把 6 位配对码填进来即可（IP 与端口已自动填好）。只需一次。",
-                    "打开配对窗口", OpenAdbWindow);
-                OpenAdbWindow();
+                    "打开配对窗口", () => OpenAdbWindow(focusPairingCode: true));
+                OpenAdbWindow(focusPairingCode: true);
             }
             else if (_adb.IsConnected)
             {
                 _pairPromptShown = false;
             }
+
+            // 正在自动连手机时，把进度写到底部状态栏：用户盯着画面等，得知道程序在忙什么
+            if (_adbMouseOn && !_adb.IsConnected && !_closing && TxtStatus is not null && AnyMirroring)
+            {
+                TxtStatus.Text = "手机控制：" + _adb.StatusText;
+            }
         }
         catch { }
     }
 
-    /// <summary>已经提示过一次配对引导（避免每次刷新都弹）。</summary>
-    private bool _pairPromptShown;
-
-    private bool _suppressAdbToggle;
+    // ------------------------------------------------------------------ 开关与连接
 
     private void SwAdbMouse_Changed(object sender, RoutedEventArgs e)
     {
         if (_suppressAdbToggle || _closing) return;
+        if (!AdbEnabled) { _adbMouseOn = false; ApplyAdbFeatureVisibility(); return; }
         _adbMouseOn = SwAdbMouse.IsChecked == true;
         _host.Settings.AdbMouseControl = _adbMouseOn;
         _host.Settings.Save();
-        AppendEvent(_adbMouseOn ? "已开启鼠标控制（安卓）" : "已关闭鼠标控制（安卓）");
+        AppendEvent(_adbMouseOn ? "已开启「电脑控制手机」" : "已关闭「电脑控制手机」");
 
-        // 打开开关：立刻自动找手机并连上（不需要用户填地址）
-        if (_adbMouseOn && !_adb.IsConnected)
+        if (!_adbMouseOn)
         {
-            AppendEvent("正在自动发现手机（需要手机已打开「无线调试」）…");
-            TryAutoConnectAdb();
+            _phoneControlRefusedByUser = true;      // 手动关掉：本次投屏不再自动打开
+            StopPhoneKeyboard("控制已关闭");
+        }
+        else
+        {
+            _phoneControlRefusedByUser = false;
+            if (!_adb.IsConnected)
+            {
+                // 打开开关就自动找手机（无线）：手机先开「无线调试」，程序一个地址都不用问
+                AppendEvent("正在自动发现手机（手机上要打开 设置 → 开发者选项 → 无线调试）…");
+                _adbRetryCountdown = 2;
+                _adbAttempts = 0;
+                _ = TryAutoConnectAdbAsync();
+            }
         }
 
         RefreshAdbUi();
@@ -3522,13 +3669,16 @@ public partial class MainWindow : Window
 
     private void BtnAdbConnect_Click(object sender, RoutedEventArgs e) => OpenAdbWindow();
 
-    private void OpenAdbWindow()
+    private void OpenAdbWindow(bool focusPairingCode = false)
     {
+        // 功能关闭：连配对窗口都不该被打开（入口按钮也已隐藏，这里是第二道闸）
+        if (!AdbEnabled) return;
         try
         {
             if (_adbWindow is not null)
             {
                 _adbWindow.Activate();
+                if (focusPairingCode) _adbWindow.FocusPairingCode();
                 return;
             }
 
@@ -3539,6 +3689,7 @@ public partial class MainWindow : Window
                 RefreshAdbUi();
             };
             _adbWindow.Show();
+            if (focusPairingCode) _adbWindow.FocusPairingCode();
         }
         catch (Exception ex)
         {
@@ -3547,171 +3698,194 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// 按设置尝试自动连一次。优先用记过的地址；**没记过地址就走 mDNS 自动发现**
-    /// —— 手机投屏上来之后用户不需要填任何地址，打开开关就应该能用鼠标。
+    /// 手机一投上来就把「电脑控制手机」准备好：**自动打开开关 + 立刻自动发现并连接**。
+    ///
+    /// 这是用户明确的诉求："手机端只管投屏，电脑端所有操作都自动，在连上的那一刻就做好"。
+    /// 尊重手动选择：用户自己把开关关掉之后，本次投屏就不再自动打开（下次手机重新投上来才会再自动准备）。
     /// </summary>
-    private async void TryAutoConnectAdb()
+    private async Task AutoStartPhoneControlAsync()
     {
+        if (!Features.AndroidRemoteControl) return;   // 功能已整体下线
         try
         {
-            if (_adb.IsConnected || _adb.Client is null) return;
-            if (_adb.State is AdbLinkState.Connecting or AdbLinkState.Pairing) return;
-            if (!_host.Settings.AdbAutoConnect) return;
-            // 开关没开就不去连手机：连 adb 是有副作用的（会起 adb server），用户没要就别做
-            if (!_adbMouseOn) return;
+            if (_closing) return;
+            if (!_host.Settings.AdbAutoConnect)
+            {
+                _host.Log.Debug("adb", "「投屏时自动连接手机控制」是关的，不自动连手机");
+                RefreshAdbUi();
+                return;
+            }
 
+            if (_phoneControlRefusedByUser)
+            {
+                // 用户在这次投屏里手动关掉了控制开关：别硬给他打开（下次手机重新投上来才会再自动准备）
+                _host.Log.Debug("adb", "用户本次投屏已手动关闭「电脑控制手机」，不再自动打开");
+                RefreshAdbUi();
+                return;
+            }
+
+            if (!_adbMouseOn)
+            {
+                _adbMouseOn = true;
+                _host.Settings.AdbMouseControl = true;
+                _host.Settings.Save();
+                AppendEvent("已自动开启「电脑控制手机」");
+                _host.Log.Info("adb", "手机已投屏：自动开启「电脑控制手机」并开始连手机");
+            }
+
+            RefreshAdbUi();
+            await TryAutoConnectAdbAsync();
+        }
+        catch (Exception ex)
+        {
+            _host.Log.Debug("adb", $"自动准备手机控制失败：{ex.Message}");
+        }
+    }
+
+    /// <summary>用户在本次投屏里手动关掉了控制开关：本次不再自动打开。</summary>
+    private bool _phoneControlRefusedByUser;
+
+    /// <summary>
+    /// 自动连一次手机（**无线**）。顺序：mDNS 自动发现 → 记过的地址兜底。
+    ///
+    /// 为什么把发现放在前面：无线调试的**端口每次都会变**，记过的那个多半已经过期；
+    /// 先去连一个过期端口要等到 TCP 超时（几秒），而 `adb mdns services` 是查本机缓存，通常几百毫秒。
+    /// </summary>
+    private async Task TryAutoConnectAdbAsync()
+    {
+        if (!AdbEnabled) return;   // 功能关闭：不起 adb、不做发现
+        if (_adbAutoConnecting) return;
+        _adbAutoConnecting = true;
+        try
+        {
+            if (_closing || _adb.IsConnected || _adb.Client is null) return;
+            if (_adb.State is AdbLinkState.Connecting or AdbLinkState.Pairing) return;
+            if (!_adbMouseOn || !_host.Settings.AdbAutoConnect) return;
+
+            // 1) mDNS 自动发现 + 连接（拿的是手机此刻真实的端口，用户什么都不用填）
+            await _adb.AutoConnectAsync();
+            if (_adb.IsConnected) return;
+
+            // 2) 兜底：设置里记过的地址（手机上关过又开了无线调试时，端口变了，这一步多半也没用）
             string host = _host.Settings.AdbHost;
             bool hasPort = int.TryParse(_host.Settings.AdbConnectPort, out int port) && port > 0;
-
             if (host.Length > 0 && hasPort)
             {
                 await _adb.ConnectAsync(host, port);
-                if (_adb.IsConnected) return;
             }
-
-            // 记过的地址不通（或者压根没填过）：自动发现 + 连接
-            await _adb.AutoConnectAsync();
         }
         catch (Exception ex)
         {
             _host.Log.Debug("adb", $"自动连接失败：{ex.Message}");
         }
+        finally
+        {
+            _adbAutoConnecting = false;
+            if (!_closing) RefreshAdbUi();
+        }
     }
+
+    /// <summary>自动连接是否正在跑（别让定时器和投屏事件叠着跑两份）。</summary>
+    private bool _adbAutoConnecting;
+
+    /// <summary>「电脑控制手机」控制条当前是不是显示着（变化时要把浮动控制条挪一下）。</summary>
+    private bool _phoneBarShown;
+
+    private int _adbRetryCountdown = 2;
+    private int _adbAttempts;
 
     /// <summary>
-    /// 画面上的鼠标按下：记下起点，供"点击 vs 拖动"判断（⑧）。
-    /// 顺便：点到并排的某一格＝把这一路放大（④）。
+    /// 还没连上时的重试节奏：**刚投上来的那几秒最要紧**（用户就盯着画面看能不能用），每 2 秒试一次；
+    /// 试了几次还不成（多半是手机端没开「无线调试」）就退回 10 秒一次，别一直占着 adb。
+    /// 没在投屏时不重试 —— 手机没投上来的时候连它没有意义。
     /// </summary>
-    private void OnStagePointerDown(object sender, MouseButtonEventArgs e)
+    private void TickPhoneControl()
     {
-        try
+        if (_closing || _adbAutoConnecting) return;
+        if (!AdbEnabled) return;   // 功能关闭：不重试、不碰 adb
+
+        if (!_adbMouseOn || _adb.IsConnected || !_host.Settings.AdbAutoConnect)
         {
-            _adbDownPoint = null;
-
-            // 先看是不是点在某个"非主画面"的格子上（那时是切换，不是鼠标控制）
-            foreach ((string id, MultiViewTile tile) in _tiles)
-            {
-                if (tile.IsMain) continue;
-                if (InsideHost(tile.Host, e.GetPosition(tile.Host)))
-                {
-                    _pendingTileFocus = id;
-                    return;
-                }
-            }
-
-            if (!AdbMouseReady(out _, out _)) return;
-            if (!InsideHost(MiracastHost, e.GetPosition(MiracastHost))) return;
-
-            _adbDownPoint = e.GetPosition(MiracastHost);
-            _adbDownAt = DateTime.UtcNow;
+            _adbRetryCountdown = 2;
+            _adbAttempts = 0;
+            return;
         }
-        catch { }
+
+        if (!AnyMirroring && !_demoCast) return;
+
+        if (--_adbRetryCountdown > 0) return;
+        _adbAttempts++;
+        // 前几次 2 秒一次（刚投上来那几秒最要紧），之后 5 秒一次。
+        // 不给到 10 秒以上：用户很可能在投屏之后才去手机上打开「无线调试」，
+        // 那之后最多等 5 秒就连上，不用让人以为程序没反应。
+        _adbRetryCountdown = _adbAttempts <= 4 ? 2 : 5;
+        _ = TryAutoConnectAdbAsync();
     }
 
-    /// <summary>鼠标抬起：格子＝放大该路；主画面＝点按或滑动（拖动）。</summary>
-    private void OnStagePointerUp(object sender, MouseButtonEventArgs e)
-    {
-        try
-        {
-            if (_pendingTileFocus is { } pending)
-            {
-                _pendingTileFocus = null;
-                OnTileFocusRequested(pending);
-                return;
-            }
-
-            if (_adbDownPoint is not { } down) return;
-            _adbDownPoint = null;
-
-            if (!AdbMouseReady(out AndroidInput? input, out AndroidScreen? screen)) return;
-            if (!InsideHost(MiracastHost, e.GetPosition(MiracastHost))) return;
-
-            VideoBox box = PrimaryVideoBox();
-            Point up = e.GetPosition(MiracastHost);
-            HandleAdbClickOrDrag(input!, screen!, box, down, up);
-            e.Handled = true;
-        }
-        catch (Exception ex)
-        {
-            _host.Log.Debug("adb", $"鼠标抬起处理异常：{ex.Message}");
-        }
-    }
-
-    /// <summary>滚轮：在画面上滚动＝手机上滑动一下。</summary>
-    private void OnStagePointerWheel(object sender, MouseWheelEventArgs e)
-    {
-        try
-        {
-            if (!AdbMouseReady(out AndroidInput? input, out AndroidScreen? screen)) return;
-            Point at = e.GetPosition(MiracastHost);
-            if (!InsideHost(MiracastHost, at)) return;
-
-            HandleAdbScroll(input!, screen!, PrimaryVideoBox(), at, e.Delta / 120);
-            e.Handled = true;
-        }
-        catch (Exception ex)
-        {
-            _host.Log.Debug("adb", $"滚轮处理异常：{ex.Message}");
-        }
-    }
-
-    /// <summary>鼠标控制当前是不是可用（开关开着、adb 连着、主画面是安卓这一路）。</summary>
-    private bool AdbMouseReady(out AndroidInput? input, out AndroidScreen? screen)
+    /// <summary>「电脑控制手机」当前是不是可用（开关开着、adb 连着、主画面是安卓这一路）。</summary>
+    private bool PhoneControlReady(out AndroidInput? input, out AndroidScreen? screen)
     {
         input = null;
         screen = null;
 
+        if (!AdbEnabled) return false;   // 功能关闭
         if (_closing || _masked) return false;
-        if (!_adbMouseOn) { LogMouseIgnored("开关没开"); return false; }
-        if (!MiracastPrimary) { LogMouseIgnored("当前主画面不是安卓这一路（AirPlay 不提供鼠标控制）"); return false; }
+        if (!_adbMouseOn) { LogPhoneIgnored("开关没开"); return false; }
+        if (!MiracastPrimary) { LogPhoneIgnored("当前主画面不是安卓这一路（AirPlay 不提供控制）"); return false; }
 
         input = _adb.Input;
-        if (input is null || !_adb.IsConnected) { LogMouseIgnored("adb 还没连上手机：" + _adb.StatusText); return false; }
+        if (input is null || !_adb.IsConnected) { LogPhoneIgnored("还没连上手机：" + _adb.StatusText); return false; }
 
         screen = _adb.Screen;
-        if (screen is null || !screen.IsValid) { LogMouseIgnored("还没拿到手机屏幕尺寸"); return false; }
-        if (MiracastHost.SurfaceBrush is null) { LogMouseIgnored("画面还没出来"); return false; }
+        if (screen is null || !screen.IsValid) { LogPhoneIgnored("还没拿到手机屏幕尺寸"); return false; }
+        if (MiracastHost.SurfaceBrush is null) { LogPhoneIgnored("画面还没出来"); return false; }
 
         return true;
     }
 
-    /// <summary>某个位置是不是落在这个画面宿主里（宿主尺寸为 0 时一律算"不在"）。</summary>
-    private static bool InsideHost(Interop.CompositionVideoHost host, Point point)
-        => host.ActualWidth > 1 && host.ActualHeight > 1
-           && point.X >= 0 && point.Y >= 0 && point.X <= host.ActualWidth && point.Y <= host.ActualHeight;
-
-    /// <summary>主画面在窗口里实际占的那块矩形（按当前适配方式与缩放算）。</summary>
-    private VideoBox PrimaryVideoBox()
-    {
-        double dpi = VisualTreeHelper.GetDpi(MiracastHost).DpiScaleX;
-        if (dpi <= 0) dpi = 1;
-        return ScreenCoordinateMapper.ComputeVideoBox(
-            ToFitMode(_fit), MiracastHost.ActualWidth, MiracastHost.ActualHeight,
-            MiracastHost.SurfaceWidth, MiracastHost.SurfaceHeight, _zoom, dpi);
-    }
-
-    private DateTime _mouseIgnoredLoggedAt = DateTime.MinValue;
-    private string _mouseIgnoredReason = "";
+    private DateTime _phoneIgnoredLoggedAt = DateTime.MinValue;
+    private string _phoneIgnoredReason = "";
 
     /// <summary>
     /// 「点了没反应」要能查到原因：把被拦下的原因写进日志与状态栏
     /// （同一原因 10 秒内只写一条，避免刷屏）。
     /// </summary>
-    private void LogMouseIgnored(string reason)
+    private void LogPhoneIgnored(string reason)
     {
-        if (reason == _mouseIgnoredReason && (DateTime.UtcNow - _mouseIgnoredLoggedAt).TotalSeconds < 10)
+        if (reason == _phoneIgnoredReason && (DateTime.UtcNow - _phoneIgnoredLoggedAt).TotalSeconds < 10)
         {
             return;
         }
 
-        _mouseIgnoredReason = reason;
-        _mouseIgnoredLoggedAt = DateTime.UtcNow;
-        _host.Log.Info("adb", "画面上的鼠标动作被忽略：" + reason);
+        _phoneIgnoredReason = reason;
+        _phoneIgnoredLoggedAt = DateTime.UtcNow;
+        _host.Log.Info("adb", "画面上的动作被忽略：" + reason);
         if (!_closing && TxtStatus is not null)
         {
-            TxtStatus.Text = "鼠标动作未生效：" + reason;
+            TxtStatus.Text = "没生效：" + reason;
         }
     }
+
+    /// <summary>把一次注入排进队列执行（顺序有保证；异常只记日志，不打断界面）。</summary>
+    private void EnqueuePhoneInput(Action<AndroidInput> action)
+    {
+        lock (_phoneInputGate)
+        {
+            _phoneInputChain = _phoneInputChain.ContinueWith(_ =>
+            {
+                try
+                {
+                    if (_adb.Input is { } input) action(input);
+                }
+                catch (Exception ex)
+                {
+                    _host.Log.Debug("adb", $"注入失败：{ex.Message}");
+                }
+            }, TaskScheduler.Default);
+        }
+    }
+
+    // ------------------------------------------------------------------ 画面上的鼠标 → 手机触摸
 
     private void HandleAdbClickOrDrag(AndroidInput input, AndroidScreen screen, VideoBox box, Point downPoint, Point upPoint)
     {
@@ -3727,18 +3901,18 @@ public partial class MainWindow : Window
         if (from.Inside && distance >= 8)
         {
             int duration = (int)Math.Clamp((DateTime.UtcNow - _adbDownAt).TotalMilliseconds, 120, 1200);
-            _adbSwipes++;
-            _ = Task.Run(() => input.Swipe(from.PhoneX, from.PhoneY, up.PhoneX, up.PhoneY, duration));
-            TxtStatus.Text = $"已滑动：手机 ({from.PhoneX},{from.PhoneY}) → ({up.PhoneX},{up.PhoneY})";
-            _host.Log.Info("adb", $"鼠标拖动 → 手机滑动 ({from.PhoneX},{from.PhoneY})→({up.PhoneX},{up.PhoneY})");
+            int fx = from.PhoneX, fy = from.PhoneY, ux = up.PhoneX, uy = up.PhoneY;
+            EnqueuePhoneInput(i => i.Swipe(fx, fy, ux, uy, duration));
+            TxtStatus.Text = $"已滑动：手机 ({fx},{fy}) → ({ux},{uy})";
+            _host.Log.Info("adb", $"鼠标拖动 → 手机滑动 ({fx},{fy})→({ux},{uy})");
             RefreshAdbUi();
             return;
         }
 
-        _adbTaps++;
-        _ = Task.Run(() => input.Tap(up.PhoneX, up.PhoneY));
-        TxtStatus.Text = $"已点按：手机 ({up.PhoneX},{up.PhoneY})" + (up.Note is null ? "" : " · " + up.Note);
-        _host.Log.Info("adb", $"鼠标点击 → 手机点按 ({up.PhoneX},{up.PhoneY})，画面坐标 u={up.U:F3} v={up.V:F3}");
+        int x = up.PhoneX, y = up.PhoneY;
+        EnqueuePhoneInput(i => i.Tap(x, y));
+        TxtStatus.Text = $"已点按：手机 ({x},{y})" + (up.Note is null ? "" : " · " + up.Note);
+        _host.Log.Info("adb", $"鼠标点击 → 手机点按 ({x},{y})，画面坐标 u={up.U:F3} v={up.V:F3}");
         RefreshAdbUi();
     }
 
@@ -3749,31 +3923,273 @@ public partial class MainWindow : Window
         if (!point.Inside) return;
 
         (int dx, int dy) = ScreenCoordinateMapper.ScrollVector(notches, screen);
-        int toX = Math.Clamp(point.PhoneX + dx, 0, screen.CurrentWidth - 1);
-        int toY = Math.Clamp(point.PhoneY + dy, 0, screen.CurrentHeight - 1);
-        _adbSwipes++;
+        int fromX = point.PhoneX, fromY = point.PhoneY;
+        int toX = Math.Clamp(fromX + dx, 0, screen.CurrentWidth - 1);
+        int toY = Math.Clamp(fromY + dy, 0, screen.CurrentHeight - 1);
         int steps = Math.Clamp(Math.Abs(notches), 1, 5);
-        _ = Task.Run(() =>
+        EnqueuePhoneInput(i =>
         {
-            for (int i = 0; i < steps; i++)
+            for (int step = 0; step < steps; step++)
             {
-                input.Swipe(point.PhoneX, point.PhoneY, toX, toY, 160);
+                i.Swipe(fromX, fromY, toX, toY, 160);
             }
         });
-        TxtStatus.Text = $"已滚动：手机 ({point.PhoneX},{point.PhoneY}) → ({toX},{toY})";
-        _host.Log.Info("adb", $"鼠标滚轮 → 手机滑动 ({point.PhoneX},{point.PhoneY})→({toX},{toY})");
+        TxtStatus.Text = $"已滚动：手机 ({fromX},{fromY}) → ({toX},{toY})";
+        _host.Log.Info("adb", $"鼠标滚轮 → 手机滑动 ({fromX},{fromY})→({toX},{toY})");
         RefreshAdbUi();
     }
 
-    /// <summary>界面上的适配方式 → 纯数学模块里的枚举。</summary>
-    private static VideoFitMode ToFitMode(Interop.CompositionVideoHost.VideoFit fit) => fit switch
+    // ------------------------------------------------------------------ 系统键
+
+    private void BtnPhoneKey_Click(object sender, RoutedEventArgs e)
     {
-        Interop.CompositionVideoHost.VideoFit.Fill => VideoFitMode.Fill,
-        Interop.CompositionVideoHost.VideoFit.Stretch => VideoFitMode.Stretch,
-        Interop.CompositionVideoHost.VideoFit.Native => VideoFitMode.Native,
-        _ => VideoFitMode.Fit,
-    };
-       ========================================================================================= */
+        if (!PhoneControlReady(out AndroidInput? input, out _)) return;
+        if (sender is not FrameworkElement { Tag: string tag }) return;
+        if (!Enum.TryParse(tag, ignoreCase: true, out AndroidKey key)) return;
+
+        AndroidInput ready = input!;
+        EnqueuePhoneInput(i => i.Key(key));
+        TxtStatus.Text = $"已按下手机上的：{AndroidKeys.Label(key)}";
+        _host.Log.Info("adb", $"按键 → {AndroidKeys.Label(key)}（{AndroidKeys.Wire(key)}）");
+        RefreshAdbUi();
+    }
+
+    // ------------------------------------------------------------------ 文字（英文数字直发；中文要 ADBKeyboard）
+
+    private void TxtPhoneText_KeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key is not (Key.Enter or Key.Return)) return;
+        e.Handled = true;
+        _ = SendPhoneTextAsync(TxtPhoneText.Text);
+    }
+
+    private async void BtnPhoneSend_Click(object sender, RoutedEventArgs e)
+        => await SendPhoneTextAsync(TxtPhoneText.Text);
+
+    private async Task SendPhoneTextAsync(string text)
+    {
+        if (string.IsNullOrEmpty(text)) return;
+        if (!PhoneControlReady(out AndroidInput? input, out _)) return;
+
+        try
+        {
+            AndroidTextPlan plan = await _adb.BuildTextPlanAsync(text);
+            if (!plan.Ok)
+            {
+                // 送不了就明说原因（中文要装 ADBKeyboard），绝不假装成功、也不静默丢字
+                TxtStatus.Text = "文字没有发出去：" + plan.Note;
+                ShowToast("这段文字发不到手机", plan.Note, null, null, ok: false);
+                return;
+            }
+
+            AndroidInput ready = input!;
+            await Task.Run(() => ready.SendText(plan));
+            if (ready.LastResult is { Ok: true })
+            {
+                TxtPhoneText.Clear();
+                TxtStatus.Text = $"已发送到手机（{plan.ModeLabel}）";
+                _host.Log.Info("adb", $"文字已发送到手机（{plan.ModeLabel}，{plan.Commands.Count} 条命令）");
+            }
+            else
+            {
+                TxtStatus.Text = "发送失败：" + (ready.LastResult?.Text ?? "（无输出）");
+            }
+
+            RefreshAdbUi();
+        }
+        catch (Exception ex)
+        {
+            _host.Log.Warn("adb", $"发送文字失败：{ex.Message}");
+            TxtStatus.Text = "发送失败：" + ex.Message;
+        }
+    }
+
+    // ------------------------------------------------------------------ 手机截屏（加密入库）
+
+    private async void BtnPhoneShot_Click(object sender, RoutedEventArgs e)
+    {
+        if (!PhoneControlReady(out _, out _)) return;
+        BtnPhoneShot.IsEnabled = false;
+        try
+        {
+            AndroidCapture capture = await _adb.ScreenshotAsync();
+            if (!capture.Ok)
+            {
+                TxtStatus.Text = capture.Describe();
+                ShowToast("没能截到手机的屏", capture.Error ?? "未知原因", null, null, ok: false);
+                return;
+            }
+
+            // 与电脑截屏同一套归属流程：只需要账号（公钥），**不需要密码**；查看时才要密码
+            if (!EnsureCaptureAccount()) return;
+            var saved = _capture.SavePhoneScreenshot(capture.Png!, capture.Width, capture.Height);
+            if (!saved.Ok)
+            {
+                ShowToast("入库失败", saved.Error ?? "未知原因", null, null, ok: false);
+                return;
+            }
+
+            _sessionShots++;
+            TxtStatus.Text = capture.Describe() + " · 已加密入库";
+            ShowToast("手机截屏已保存", capture.Describe() + "：加密存进「我的库」，查看要账号密码。",
+                "打开我的库", OpenVault);
+            _host.Publish("手机截屏已加密入库");
+            _host.Log.Event("adb", $"手机截屏已加密入库（{capture.Width}×{capture.Height}）");
+            RefreshUi();
+        }
+        catch (Exception ex)
+        {
+            _host.Log.Warn("adb", $"手机截屏失败：{ex.Message}");
+            TxtStatus.Text = "手机截屏失败：" + ex.Message;
+        }
+        finally
+        {
+            BtnPhoneShot.IsEnabled = true;
+        }
+    }
+
+    // ------------------------------------------------------------------ 键盘直通
+
+    private void SwPhoneKeyboard_Changed(object sender, RoutedEventArgs e)
+    {
+        if (_suppressPhoneKeyboardToggle || _closing) return;
+        if (!AdbEnabled) { SetPhoneKeyboardFlag(false); return; }
+
+        if (SwPhoneKeyboard.IsChecked != true)
+        {
+            StopPhoneKeyboard("已关闭键盘直通");
+            return;
+        }
+
+        if (!PhoneControlReady(out _, out _))
+        {
+            SetPhoneKeyboardFlag(false);
+            TxtStatus.Text = "键盘直通要先连上手机";
+            return;
+        }
+
+        SetPhoneKeyboardFlag(true);
+        AppendEvent("键盘直通已开启：敲的字直接进手机（英文数字；回车＝确认、退格＝删除、Esc＝返回；中文用控制条的输入框）");
+        TxtStatus.Text = "键盘直通已开启：现在敲的字直接进手机（Ctrl+Alt+K 可关闭）";
+    }
+
+    private void SetPhoneKeyboardFlag(bool on)
+    {
+        _phoneKeyboardOn = on;
+        _suppressPhoneKeyboardToggle = true;
+        SwPhoneKeyboard.IsChecked = on;
+        _suppressPhoneKeyboardToggle = false;
+    }
+
+    private void StopPhoneKeyboard(string why)
+    {
+        FlushTyping();
+        if (_phoneKeyboardOn) AppendEvent(why);
+        SetPhoneKeyboardFlag(false);
+    }
+
+    /// <summary>键盘直通当前生不生效（别跟程序自己的输入框/密码框抢键）。</summary>
+    private bool PhoneKeyboardActive()
+    {
+        if (!_phoneKeyboardOn || !_adbMouseOn || _closing) return false;
+        if (Keyboard.FocusedElement is System.Windows.Controls.Primitives.TextBoxBase) return false;
+        if (Keyboard.FocusedElement is PasswordBox) return false;
+        return true;
+    }
+
+    private void OnStageKeyDown(object sender, KeyEventArgs e)
+    {
+        // 功能关闭时 Ctrl+Alt+K 完全不存在：不抢这个键，也不提示"要先连上手机"
+        if (!AdbEnabled) return;
+
+        // Ctrl+Alt+K：随时开关「键盘直通」。
+        // 必须有这么一个明确的出口：直通开着时 Esc 被当成手机的"返回"，界面上就只剩鼠标能关它。
+        if (e.Key == Key.K && (Keyboard.Modifiers & ModifierKeys.Control) != 0 && (Keyboard.Modifiers & ModifierKeys.Alt) != 0)
+        {
+            e.Handled = true;
+            if (_phoneKeyboardOn)
+            {
+                StopPhoneKeyboard("已关闭键盘直通（Ctrl+Alt+K）");
+                TxtStatus.Text = "键盘直通已关闭";
+            }
+            else if (PhoneControlReady(out _, out _))
+            {
+                SetPhoneKeyboardFlag(true);
+                AppendEvent("键盘直通已开启（Ctrl+Alt+K）");
+                TxtStatus.Text = "键盘直通已开启：现在敲的字直接进手机";
+            }
+            else
+            {
+                TxtStatus.Text = "键盘直通要先连上手机";
+            }
+
+            return;
+        }
+
+        if (!PhoneKeyboardActive()) return;
+
+        // 带 Ctrl/Alt 的组合留给程序自己（Ctrl+Alt+F 全屏、Ctrl+Alt+K 关直通…）
+        if ((Keyboard.Modifiers & (ModifierKeys.Control | ModifierKeys.Alt)) != 0) return;
+
+        // 1) 特殊键：立即发（发之前先把攒着的字冲出去，顺序才不会乱）
+        if (AndroidKeys.FromVirtualKeyName(e.Key.ToString()) is { } key)
+        {
+            e.Handled = true;
+            FlushTyping();
+            EnqueuePhoneInput(i => i.Key(key));
+            TxtStatus.Text = $"已按下手机上的：{AndroidKeys.Label(key)}";
+            return;
+        }
+
+        // 2) 可打印字符：自己查表（不依赖"焦点在能收文字的控件上"）
+        bool shift = (Keyboard.Modifiers & ModifierKeys.Shift) != 0;
+        if (AndroidText.CharFromVirtualKeyName(e.Key.ToString(), shift) is { } ch)
+        {
+            e.Handled = true;
+            QueueTypedChar(ch);
+        }
+    }
+
+    /// <summary>攒字符：短暂停顿或攒够一批就发一条 input text（一次 adb 进程几十毫秒，逐字发会卡）。</summary>
+    private void QueueTypedChar(char ch)
+    {
+        _typingBuffer.Append(ch);
+
+        _typingFlushTimer ??= new DispatcherTimer(DispatcherPriority.Background) { Interval = TimeSpan.FromMilliseconds(140) };
+        if (!_typingFlushWired)
+        {
+            _typingFlushWired = true;
+            _typingFlushTimer.Tick += (_, _) => FlushTyping();
+        }
+
+        _typingFlushTimer.Stop();
+        _typingFlushTimer.Start();
+
+        if (_typingBuffer.Length >= 60) FlushTyping();
+    }
+
+    /// <summary>把攒下的字符合成一条命令发出去（送不了的字符会如实说，不静默丢）。</summary>
+    private void FlushTyping()
+    {
+        _typingFlushTimer?.Stop();
+        if (_typingBuffer.Length == 0) return;
+
+        string typed = _typingBuffer.ToString();
+        _typingBuffer.Clear();
+
+        if (!PhoneControlReady(out AndroidInput? input, out _)) return;
+
+        AndroidTextPlan plan = AndroidText.BuildPlan(typed, _adb.AdbKeyboardInstalled);
+        if (!plan.Ok)
+        {
+            TxtStatus.Text = "键盘直通：这段字符发不出去 —— " + plan.Note;
+            return;
+        }
+
+        AndroidInput ready = input!;
+        EnqueuePhoneInput(i => i.SendText(plan));
+        TxtStatus.Text = $"键盘直通：已发送 {typed.Length} 个字符";
+    }
 
     // ------------------------------------------------------------------ 小窗（画中画 / 最小化继续看）
 

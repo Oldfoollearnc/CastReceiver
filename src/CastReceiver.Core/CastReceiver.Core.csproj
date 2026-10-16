@@ -7,7 +7,10 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="LibVLCSharp" Version="3.10.1" />
+    <!-- 这里刻意**不**引用 LibVLCSharp：VlcPlayerEngine 已随自检工具搬到
+         tests\CastReceiver.SelfTest，Core 只留 IMediaPlayerEngine 与 IPlaybackDiagnostics 两个接口
+         （且都不暴露 LibVLC 类型）。于是发布包不再携带这个 LGPL 绑定，产品路径也不需要原生 libvlc。
+         设置页里的自检传的是 player: null，本来就不走这条路径。 -->
     <!-- 加密库：DPAPI 用于保护「非关键元数据」（设备别名等）；条目内容与私钥走 RSA/AES，不依赖 DPAPI -->
     <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="10.0.1" />
   </ItemGroup>

@@ -65,7 +65,9 @@ function ClickName($win, [string]$name) {
 $p = Start-Process -FilePath $Exe -PassThru -ArgumentList "--no-intro --vault-root `"$work\vault`" --settings-root `"$work\cfg`" --instance-suffix `"-intropage`""
 Start-Sleep -Seconds 10
 $main = [System.Windows.Automation.AutomationElement]::FromHandle([IEP]::Find($p.Id, "投屏Window"))
-ClickName $main "打开设置" | Out-Null
+# 顶栏齿轮的可访问名是「设置」（"打开设置" 只是它的 ToolTip 文本，
+# 而脚本按 UIA Name 查找 → 只写「打开设置」会一直找不到）。两个都试，避免再次因改名失效。
+if (-not (ClickName $main "设置")) { ClickName $main "打开设置" | Out-Null }
 Start-Sleep -Seconds 4
 $settings = [System.Windows.Automation.AutomationElement]::FromHandle([IEP]::Find($p.Id, "设置"))
 if (-not $settings) { Write-Host "设置窗没起来" -ForegroundColor Red; Stop-Process -Id $p.Id -Force; exit 1 }

@@ -16,7 +16,9 @@
     <SolidColorBrush x:Key="B.LineSoft" Color="#1B1E22" />
     <SolidColorBrush x:Key="B.Text" Color="#EDEEF1" />
     <SolidColorBrush x:Key="B.TextDim" Color="#A5ABB4" />
-    <SolidColorBrush x:Key="B.TextFaint" Color="#6E757E" />
+    <!-- 会当正文/说明文字用，须在 B.Surface / B.Bg / B.BgSoft 上 ≥4.5:1；#868D96 实测最低 5.25:1，且仍比 TextDim 暗以保住层级。
+         （旧值 #6E757E 最低只有 3.78:1。） -->
+    <SolidColorBrush x:Key="B.TextFaint" Color="#868D96" />
     <SolidColorBrush x:Key="B.Ok" Color="#34D399" />
     <SolidColorBrush x:Key="B.Warn" Color="#F2B455" />
     <SolidColorBrush x:Key="B.Bad" Color="#F87171" />
@@ -34,6 +36,22 @@
     <SolidColorBrush x:Key="B.ScrollThumb" Color="#2C3138" />
     <SolidColorBrush x:Key="B.BusyOverlay" Color="#F00A0B0D" />
     <SolidColorBrush x:Key="B.WindowMica" Color="#D90A0B0D" />
+
+    <!-- 媒体语境浮层（悬浮控制条 / 通讯状态卡 / 小窗控制条）：刻意**不跟主题**。
+         舞台永远是黑的，浅色主题若沿用主题色，浮层会变成近乎不透明的白条压在黑画面上——刺眼，也失去"浮在视频之上"的语意。
+         这几个键在深浅两套主题里取值完全相同，切主题不会影响它们。改色请两套同步改。 -->
+    <SolidColorBrush x:Key="B.MediaBar" Color="#E6121418" />
+    <SolidColorBrush x:Key="B.MediaBarSoft" Color="#CC0E1013" />
+    <SolidColorBrush x:Key="B.MediaLine" Color="#33FFFFFF" />
+    <SolidColorBrush x:Key="B.MediaText" Color="#EDEEF1" />
+    <SolidColorBrush x:Key="B.MediaTextDim" Color="#A5ABB4" />
+    <SolidColorBrush x:Key="B.MediaBtn" Color="#1FFFFFFF" />
+    <SolidColorBrush x:Key="B.MediaBtnHover" Color="#33FFFFFF" />
+    <SolidColorBrush x:Key="B.MediaBtnPress" Color="#4DFFFFFF" />
+    <!-- 浮层里的曲线/状态点也要用"暗底友好"的一套：浅色主题的 Ok(#0F7A3D) 放在近黑浮层上几乎看不见 -->
+    <SolidColorBrush x:Key="B.MediaOk" Color="#34D399" />
+    <SolidColorBrush x:Key="B.MediaWarn" Color="#F2B455" />
+    <SolidColorBrush x:Key="B.MediaBad" Color="#F87171" />
 
     <!-- 原生启动闪屏（GDI 用，写成 #RRGGBB 便于代码解析） -->
     <sys:String xmlns:sys="clr-namespace:System;assembly=mscorlib" x:Key="T.SplashBg">#0A0B0D</sys:String>

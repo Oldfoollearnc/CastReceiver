@@ -50,7 +50,7 @@
                     <!-- 密码 -->
                     <TextBlock Text="密码" FontSize="12" Foreground="{DynamicResource B.TextFaint}" Margin="0,16,0,0" />
                     <Grid Margin="0,7,0,0">
-                        <PasswordBox x:Name="TxtPassword" Style="{StaticResource S.FieldPwd}" AutomationProperties.Name="密码"
+                        <PasswordBox x:Name="TxtPassword" InputMethod.IsInputMethodEnabled="False" Style="{StaticResource S.FieldPwd}" AutomationProperties.Name="密码"
                                      CaretBrush="{DynamicResource B.Text}" PasswordChar="●"
                                      PasswordChanged="Password_Changed" />
                         <TextBlock x:Name="PhPassword" Text="至少 8 位，含字母和数字" FontSize="13" Foreground="{DynamicResource B.TextFaint}"
@@ -76,7 +76,7 @@
                     <!-- 确认密码 -->
                     <TextBlock Text="再输一次" FontSize="12" Foreground="{DynamicResource B.TextFaint}" Margin="0,16,0,0" />
                     <Grid Margin="0,7,0,0">
-                        <PasswordBox x:Name="TxtConfirm" Style="{StaticResource S.FieldPwd}" AutomationProperties.Name="再次输入密码"
+                        <PasswordBox x:Name="TxtConfirm" InputMethod.IsInputMethodEnabled="False" Style="{StaticResource S.FieldPwd}" AutomationProperties.Name="再次输入密码"
                                      CaretBrush="{DynamicResource B.Text}" PasswordChar="●"
                                      PasswordChanged="Password_Changed" />
                         <TextBlock x:Name="PhConfirm" Text="再输一次密码" FontSize="13" Foreground="{DynamicResource B.TextFaint}"

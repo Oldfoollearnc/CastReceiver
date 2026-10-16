@@ -8,9 +8,15 @@
     <Border Background="{DynamicResource B.Surface}" BorderBrush="{DynamicResource B.Line}" BorderThickness="1"
             CornerRadius="16" Padding="24,20">
         <StackPanel>
+            <!-- 标题与右侧拖动提示分列，避免同格叠放（标题变长时会压住提示） -->
             <Grid MouseLeftButtonDown="OnDrag" Background="Transparent">
-                <TextBlock Text="连接诊断" Style="{DynamicResource S.H1}" />
-                <TextBlock Text="拖动可移动窗口" FontSize="11" Foreground="{DynamicResource B.TextFaint}"
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Text="连接诊断" Style="{DynamicResource S.H1}" Margin="0,0,12,0"
+                           TextTrimming="CharacterEllipsis" />
+                <TextBlock Grid.Column="1" Text="拖动可移动窗口" FontSize="11" Foreground="{DynamicResource B.TextFaint}"
                            HorizontalAlignment="Right" VerticalAlignment="Center" />
             </Grid>
             <TextBlock x:Name="TxtProgress" FontSize="11.5" Foreground="{DynamicResource B.TextFaint}" Margin="0,6,0,0" Text="准备中…" />

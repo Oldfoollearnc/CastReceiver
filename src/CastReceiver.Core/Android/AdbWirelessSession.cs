@@ -82,6 +82,15 @@ public sealed class AdbWirelessSession
     /// <summary>手机屏幕信息（连上后才有）。</summary>
     public AndroidScreen? Screen => Device?.Screen;
 
+    /// <summary>这台手机装没装 ADBKeyboard（装了才收得了中文）。连上后探测一次。</summary>
+    public bool AdbKeyboardInstalled { get; private set; }
+
+    /// <summary>这条连接是不是**数据线**（最省事的那条路：不用配对、不用填端口）。</summary>
+    public bool IsUsbConnection => !string.IsNullOrWhiteSpace(Serial) && !Serial!.Contains(':');
+
+    /// <summary>最近一次发现到的「配对端点」（配对窗口据此把配对端口自动填好）。</summary>
+    public AdbMdnsService? LastPairingService { get; private set; }
+
     /// <summary>这台手机支不支持无线调试**配对**（Android 11+）。连上之前是"未知"。</summary>
     public bool? PairingSupported { get; private set; }
 
@@ -213,6 +222,8 @@ public sealed class AdbWirelessSession
 
         Serial = null;
         Device = null;
+        _imeProbed = false;
+        AdbKeyboardInstalled = false;
         SetState(AdbLinkState.Idle, "已断开");
     }
 
@@ -223,6 +234,7 @@ public sealed class AdbWirelessSession
         AdbResult result = await Task.Run(() => Client.Run("mdns services", 20000)).ConfigureAwait(false);
         LastOutput = result.Text;
         IReadOnlyList<AdbMdnsService> found = AdbMdnsParser.Parse(result.Text);
+        RecordPairingService(found);
         if (found.Count == 0)
         {
             _log?.Debug("adb", "mDNS 没发现无线调试服务（手机可能没开无线调试，或不在同一网段）");
@@ -231,8 +243,74 @@ public sealed class AdbWirelessSession
         return found;
     }
 
+    /// <summary>记住这次发现的配对端点：配对窗口打开时就不用用户再去找端口了。</summary>
+    private void RecordPairingService(IReadOnlyList<AdbMdnsService> found)
+    {
+        AdbMdnsService? pairing = found.FirstOrDefault(s => s.IsPairing);
+        if (pairing is not null) LastPairingService = pairing;
+    }
+
+    // ------------------------------------------------------------------ 控制：文字 / 截屏
+
     /// <summary>
-    /// 自动发现并连接 —— 用户**不需要填任何地址**。
+    /// 预热 adb：把 adb server 先起起来。
+    ///
+    /// 为什么值得做：第一次调用 adb 要**启动 adb server**（几百毫秒到一秒多），
+    /// 而用户感知到的"连手机很慢"里就有这一段。程序启动时在后台先起好，
+    /// 等手机投上来那一刻就是直接发现 + 连接，省掉这段等待。
+    /// </summary>
+    public async Task WarmUpAsync()
+    {
+        if (Client is null) return;
+        try
+        {
+            AdbResult result = await Task.Run(() => Client.Run("start-server", 20000)).ConfigureAwait(false);
+            _log?.Debug("adb", result.Ok ? "adb server 已预热" : "adb server 预热失败：" + FirstLine(result.Text));
+        }
+        catch (Exception ex)
+        {
+            _log?.Debug("adb", "adb server 预热异常：" + ex.Message);
+        }
+    }
+
+    private bool _imeProbed;
+
+    /// <summary>
+    /// 探测手机装没装 ADBKeyboard（只用探一次）。
+    /// 它决定"中文能不能从电脑发过去"：不装的话安卓自带的 input text 只送得了英文数字。
+    /// </summary>
+    private async Task EnsureImeProbeAsync()
+    {
+        if (_imeProbed || Client is null || string.IsNullOrWhiteSpace(Serial)) return;
+        AdbResult result = await Task.Run(() => Client.RunOn(Serial!, "shell ime list -s", 15000)).ConfigureAwait(false);
+        AdbKeyboardInstalled = AndroidText.LooksLikeAdbKeyboard(result.Text);
+        _imeProbed = true;
+        _log?.Info("adb", AdbKeyboardInstalled
+            ? "手机装了 ADBKeyboard：可以直接把中文送到手机"
+            : "手机没装 ADBKeyboard：只能送英文数字（中文请用手机自己的输入法，或装上 ADBKeyboard）");
+    }
+
+    /// <summary>给这段文字算出发送计划（含"这台手机收不收得了中文"的结论，界面据此如实提示）。</summary>
+    public async Task<AndroidTextPlan> BuildTextPlanAsync(string text)
+    {
+        await EnsureImeProbeAsync().ConfigureAwait(false);
+        return AndroidText.BuildPlan(text, AdbKeyboardInstalled);
+    }
+
+    /// <summary>手机截屏（PNG 原始字节）。没连上或拿到的不是图，都返回失败结果，不抛异常。</summary>
+    public async Task<AndroidCapture> ScreenshotAsync()
+    {
+        AndroidInput? input = Input;
+        if (input is null || !IsConnected)
+        {
+            return new AndroidCapture(false, null, 0, 0, "还没连上手机", "adb exec-out screencap -p");
+        }
+
+        return await Task.Run(() => input.Screenshot()).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// 自动发现并连接 —— **无线**，用户一个地址都不用填。
     ///
     /// 为什么可以这样：手机打开「无线调试」后会通过 mDNS 广播服务
     /// （`_adb-tls-connect._tcp` 用于连接、`_adb-tls-pairing._tcp` 用于配对），
@@ -241,6 +319,9 @@ public sealed class AdbWirelessSession
     ///
     /// 只有**第一次**在一台新手机上用时才需要配对码（Android 的安全要求，任何工具都绕不过）；
     /// 配对过一次之后手机记住了这台电脑的密钥，之后就是"打开开关即连上"。
+    ///
+    /// 配对端口是**手机打开配对弹窗时才会广播**的 —— 所以每次发现在我们都会把它记下来
+    /// （<see cref="LastPairingService"/>），界面据此把配对端口自动填好。
     /// </summary>
     public async Task<AdbAutoConnectReport> AutoConnectAsync()
     {
@@ -259,10 +340,11 @@ public sealed class AdbWirelessSession
         LastOutput = listing;
 
         IReadOnlyList<AdbMdnsService> found = AdbMdnsParser.Parse(listing);
+        RecordPairingService(found);
         if (found.Count == 0)
         {
             SetState(AdbLinkState.Idle,
-                "没发现开了无线调试的手机：请在手机上打开 设置 → 开发者选项 → 无线调试（首次还要配对一次）");
+                "没发现开了无线调试的手机：请在手机上打开 设置 → 开发者选项 → 无线调试（Android 11 及以上）");
             return new AdbAutoConnectReport(false, 0, 0, "mDNS 没有发现任何无线调试服务");
         }
 
@@ -274,8 +356,19 @@ public sealed class AdbWirelessSession
             .OrderByDescending(s => s.IsConnect)
             .ToList();
 
+        // 只看到"配对端点"时不去 connect（没配对时手机一定拒绝，白等一次超时）：
+        // 直接把人领到配对这一步，并把已经发现的配对端口带上。
         if (candidates.Count == 0)
         {
+            if (LastPairingService is { } pairing)
+            {
+                NeedsPairing = true;
+                SetState(AdbLinkState.Idle,
+                    $"发现手机正在等待配对（{pairing.Endpoint}）：请在手机上点「使用配对码配对设备」，" +
+                    "把 6 位配对码填进本程序 —— IP 与端口已自动填好");
+                return new AdbAutoConnectReport(false, found.Count, 0, "手机正在等待配对");
+            }
+
             SetState(AdbLinkState.Idle, $"发现了 {found.Count} 个服务，但都不是可连接的无线调试端点");
             return new AdbAutoConnectReport(false, found.Count, 0, "只有配对端点，没有连接端点");
         }
@@ -308,14 +401,17 @@ public sealed class AdbWirelessSession
         }
 
         LastFailure = lastFailure;
-        NeedsPairing = !EverPaired;
+        // 连不上 + 从来没配对过（或者此刻手机正开着配对弹窗）＝十有八九就是"没配对"。
+        // 这是用户最容易卡住的地方：服务能发现，但没配对就永远连不上，所以要把下一步写清楚。
+        NeedsPairing = !EverPaired || LastPairingService is not null;
         if (NeedsPairing)
         {
-            // 这是用户最容易卡住的地方：服务能发现，但没配对就永远连不上。
-            // 直接把下一步写清楚，别让人对着"连接失败"猜。
+            string port = LastPairingService is { } service
+                ? $"配对端口已自动填好（{service.Port}），"
+                : "配对端口请在手机上打开配对弹窗后点「刷新发现」，";
             SetState(AdbLinkState.Idle,
                 $"连不上 {candidates[0].Endpoint}：这台手机还没和本机配对过 —— " +
-                "请在手机上点「无线调试 → 使用配对码配对设备」，把 6 位配对码填进本程序（IP 与端口已自动填好）");
+                $"请在手机上点「无线调试 → 使用配对码配对设备」，{port}把 6 位配对码填进本程序");
         }
         else
         {
@@ -339,7 +435,9 @@ public sealed class AdbWirelessSession
         text.AppendLine($"状态：{State} · {StatusText}");
         text.AppendLine($"最近失败原因：{(LastFailure.Length > 0 ? LastFailure : "（无）")}");
         text.AppendLine($"配对过：{(EverPaired ? "是" : "否")}；需要配对：{(NeedsPairing ? "是" : "否")}");
-        text.AppendLine($"当前连接：{Serial ?? "（无）"}；上次端点：{LastEndpoint ?? "（无）"}");
+        text.AppendLine($"当前连接：{Serial ?? "（无）"}" + (IsConnected ? (IsUsbConnection ? "（数据线）" : "（无线）") : ""));
+        text.AppendLine($"上次端点：{LastEndpoint ?? "（无）"}；发现到的配对端点：{LastPairingService?.Endpoint ?? "（无）"}");
+        text.AppendLine($"中文输入：{(AdbKeyboardInstalled ? "可用（手机装了 ADBKeyboard）" : "不可用（手机没装 ADBKeyboard，只能送英文数字）")}");
 
         if (NetworkFixer is not null)
         {
@@ -467,10 +565,17 @@ public sealed class AdbWirelessSession
 
         Serial = target.Serial;
 
+        // 换了一台设备（或者刚从"未连接"变成连上）：输入法能力要重新探一次
+        if (!string.Equals(Device?.Serial, target.Serial, StringComparison.OrdinalIgnoreCase))
+        {
+            _imeProbed = false;
+            AdbKeyboardInstalled = false;
+        }
+
         // 已经连上的设备：轻量轮询时不必每次都去读系统版本与屏幕（dumpsys 不便宜）
         if (!full && Device is not null && string.Equals(Device.Serial, target.Serial, StringComparison.OrdinalIgnoreCase))
         {
-            SetState(AdbLinkState.Connected, $"{target.Model ?? target.Serial} · {Device.VersionText}");
+            SetState(AdbLinkState.Connected, StatusFor(target, Device));
             return true;
         }
 
@@ -485,17 +590,27 @@ public sealed class AdbWirelessSession
 
         PairingSupported ??= sdkValue > 0 ? sdkValue >= 30 : null;
 
+        // 输入法能力：决定中文能不能从电脑发过去（只探一次，之后走缓存）
+        await EnsureImeProbeAsync().ConfigureAwait(false);
+
         if (sdkValue > 0 && sdkValue < 30)
         {
-            // 连上了但系统太老：鼠标控制照样能用，但"无线配对"这条路走不通，必须如实说
+            // 连上了但系统太老（Android 11 以下没有「无线调试」）：控制的命令照样发得出去，
+            // 但**无线这条路本身**要靠用户先用数据线跑一次 `adb tcpip 5555` —— 程序不替他做这件事，
+            // 所以这里必须说清楚，不能含糊地说"能用"。
             SetState(AdbLinkState.Connected,
-                $"{target.Model ?? target.Serial} · Android {Device.Release}（不支持无线配对，需先用数据线执行一次 adb tcpip 5555）");
+                $"{target.Model ?? target.Serial} · Android {Device.Release}" +
+                "（Android 11 以下没有「无线调试」：需先用数据线在电脑上执行一次 adb tcpip 5555，之后才走无线）");
             return true;
         }
 
-        SetState(AdbLinkState.Connected, $"{target.Model ?? target.Serial} · {Device.VersionText}");
+        SetState(AdbLinkState.Connected, StatusFor(target, Device));
         return true;
     }
+
+    /// <summary>连上后的状态文字：**如实标出这条连接是数据线还是无线**（排查时要的就是这个）。</summary>
+    private string StatusFor(AdbDevice device, AndroidDeviceReport report)
+        => $"{device.Model ?? device.Serial} · {report.VersionText}" + (device.IsWireless ? "（无线）" : "（数据线）");
 
     /// <summary>
     /// 读屏幕：<c>wm size</c> 给"系统报的分辨率"，<c>dumpsys display</c> 给"当前方向的生效尺寸 + 旋转"。

@@ -36,19 +36,31 @@ public sealed class HotkeyService : IDisposable
     public bool Register()
     {
         if (_registered || _hwnd == IntPtr.Zero) return _registered;
+        _failed.Clear();
         try
         {
-            bool a = RegisterHotKey(_hwnd, IdFullscreen, ModControl | ModAlt | ModNoRepeat, 0x46);  // F
-            bool b = RegisterHotKey(_hwnd, IdScreenshot, ModControl | ModAlt | ModNoRepeat, 0x53);  // S
-            bool c = RegisterHotKey(_hwnd, IdRecord, ModControl | ModAlt | ModNoRepeat, 0x52);      // R
-            bool d = RegisterHotKey(_hwnd, IdPanic, ModControl | ModAlt | ModNoRepeat, 0x48);       // H
-            bool e = RegisterHotKey(_hwnd, IdLock, ModControl | ModAlt | ModNoRepeat, 0x4C);        // L
-            bool f = RegisterHotKey(_hwnd, IdPrivacy, ModControl | ModAlt | ModNoRepeat, 0x50);     // P
-            _registered = a || b || c || d || e || f;
+            // 逐个登记并如实记录失败项：以前是 a||b||c... 一个成功就返回 true，
+            // 失败被静默吞掉，而界面 tooltip 照样写着「Ctrl+Alt+S」，用户按了没反应也查不出原因。
+            void Try(int id, uint vk, string name)
+            {
+                if (!RegisterHotKey(_hwnd, id, ModControl | ModAlt | ModNoRepeat, vk)) _failed.Add(name);
+            }
+            Try(IdFullscreen, 0x46, "Ctrl+Alt+F 全屏");        // F
+            Try(IdScreenshot, 0x53, "Ctrl+Alt+S 截屏");        // S
+            Try(IdRecord, 0x52, "Ctrl+Alt+R 录制");            // R
+            Try(IdPanic, 0x48, "Ctrl+Alt+H 紧急隐藏");         // H
+            Try(IdLock, 0x4C, "Ctrl+Alt+L 锁定加密库");        // L
+            Try(IdPrivacy, 0x50, "Ctrl+Alt+P 遮挡画面");       // P
+            _registered = _failed.Count < 6;                  // 只要有一个成功就算注册成功（能用的照旧可用）
         }
         catch { }
         return _registered;
     }
+
+    private readonly List<string> _failed = new();
+
+    /// <summary>本次注册失败的组合（多为被别的程序占用），供界面如实告知用户。</summary>
+    public IReadOnlyList<string> FailedCombos => _failed;
 
     public void Unregister()
     {

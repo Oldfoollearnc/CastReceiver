@@ -7,8 +7,9 @@ using CastReceiver.Core.Infrastructure;
 namespace CastReceiver.App;
 
 /// <summary>
-/// 安卓鼠标控制的连接窗口（⑧）：
-/// 填手机「无线调试」里的端口 → 配对（首次）→ 连接；已连上就显示是哪台手机、什么系统。
+/// 「电脑控制手机」的连接窗口：
+/// 两条路 —— **数据线**（最省事：不用配对、不用填地址）与**无线调试**（mDNS 自动发现，首次要一次配对码）。
+/// 已连上就显示是哪台手机、什么系统、以及**中文能不能发**。
 ///
 /// 刻意把 **adb 的原始输出**摆在窗口里：配对失败的原因（端口写错、配对码过期、手机端弹窗没点）
 /// 只有原始输出说得清，用一句"失败"糊过去等于让用户没法自救。
@@ -27,6 +28,13 @@ public partial class AdbConnectWindow : Window
         TxtHost.Text = settings.AdbHost;
         TxtConnectPort.Text = settings.AdbConnectPort;
         TxtPairPort.Text = settings.AdbPairPort;
+        // 刚才自动发现过的那次结果直接拿来用：打开窗口时端口就是填好的，用户只需要去手机上点一下
+        if (session.LastPairingService is { } pairing)
+        {
+            if (TxtHost.Text.Length == 0) TxtHost.Text = pairing.Host;
+            TxtPairPort.Text = pairing.Port.ToString(CultureInfo.InvariantCulture);
+            TxtInputHint.Text = "首次配对（端口已自动填好，只差手机上的 6 位配对码）";
+        }
 
         _session.Changed += OnSessionChanged;
         Loaded += (_, _) =>
@@ -36,6 +44,23 @@ public partial class AdbConnectWindow : Window
         };
         Closed += (_, _) => _session.Changed -= OnSessionChanged;
         PreviewKeyDown += (_, e) => { if (e.Key == Key.Escape) Close(); };
+    }
+
+    /// <summary>
+    /// 主界面在"发现手机在等配对"时会把本窗口直接打开：这时把焦点放到配对码输入框里，
+    /// 用户从手机上抄 6 位数字过来就能直接敲，不用再点一次输入框。
+    /// </summary>
+    public void FocusPairingCode()
+    {
+        try
+        {
+            Dispatcher.BeginInvoke(() =>
+            {
+                TxtPairCode.Focus();
+                TxtPairCode.SelectAll();
+            }, System.Windows.Threading.DispatcherPriority.Loaded);
+        }
+        catch { }
     }
 
     /// <summary>自动发现同网段的手机，把 IP 与两个端口填好（找不到就如实说）。</summary>
@@ -107,11 +132,16 @@ public partial class AdbConnectWindow : Window
                                  ? $" · 屏幕 {screen2.CurrentWidth}×{screen2.CurrentHeight}（旋转 {screen2.Rotation * 90}°" +
                                    (screen2.HasMeasuredLogicalSize ? "，实测" : "，按旋转推算") + "）"
                                  : " · 屏幕尺寸未知");
-            // 老系统 + 无线配对：这里要把"不支持"说清楚（需求要求明确显示不支持）
+            TxtDevice.Text += _session.IsUsbConnection ? "\n连接方式：adb 设备列表里的有线设备" : "\n连接方式：无线调试（mDNS 自动发现）";
+            // 中文能不能发是用户最先会问的：连上后就把结论写清楚
+            TxtDevice.Text += _session.AdbKeyboardInstalled
+                ? "\n中文输入：可用（手机装了 ADBKeyboard）"
+                : "\n中文输入：只能发英文数字（手机没装 ADBKeyboard；中文可用手机自己的输入法打）";
+            // 老系统没有「无线调试」（Android 11 才有）：这条路走不通就说清楚，别让人反复重试
             if (!device.SupportsWirelessPairing)
             {
-                TxtDevice.Text += "\n该机型不支持无线调试配对（Android 11 以下）：需要先用数据线连一次，" +
-                                  "在电脑上执行 adb tcpip 5555 后再用上面的连接端口连接。";
+                TxtDevice.Text += "\n该机型是 Android 11 以下，没有「无线调试」：需要在电脑上先用数据线执行一次 " +
+                                  "adb tcpip 5555 打开网络调试口，之后才走无线。";
             }
         }
         else

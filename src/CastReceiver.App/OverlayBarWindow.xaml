@@ -3,47 +3,47 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="控制条" SizeToContent="WidthAndHeight" WindowStyle="None" AllowsTransparency="True"
         Background="Transparent" ShowInTaskbar="False" ShowActivated="False" Topmost="True" ResizeMode="NoResize"
-        FontFamily="{DynamicResource F.Ui}" Foreground="{DynamicResource B.Text}" WindowStartupLocation="Manual">
+        FontFamily="{DynamicResource F.Ui}" Foreground="{DynamicResource B.MediaText}" WindowStartupLocation="Manual">
 
     <!-- 悬浮控制条：独立顶层窗口，不受 HwndHost 空域限制，窗口模式与全屏模式下都能浮在画面上。
          用 StackPanel 布局，避免 Grid 列数不匹配导致元素互相覆盖（曾导致"放大"按钮点不到）。 -->
-    <Border Background="{DynamicResource B.OverlayBg}" BorderBrush="{DynamicResource B.Line}" BorderThickness="1" CornerRadius="16" Padding="13,9"
+    <Border Background="{DynamicResource B.MediaBar}" BorderBrush="{DynamicResource B.MediaLine}" BorderThickness="1" CornerRadius="16" Padding="13,9"
             MouseLeftButtonDown="OnDrag">
         <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-            <Button x:Name="BtnFullscreen" Style="{StaticResource S.Btn}" Content="全屏" Padding="14,6" FontSize="12"
+            <Button x:Name="BtnFullscreen" Style="{StaticResource S.BtnMedia}" Content="全屏" Padding="14,6" FontSize="12"
                     AutomationProperties.Name="全屏" Click="BtnFullscreen_Click"
                     ToolTip="进入 / 退出全屏（F11；全屏时 Esc）" />
 
-            <Border Width="1" Height="20" Background="{DynamicResource B.Line}" Margin="10,0" />
+            <Border Width="1" Height="20" Background="{DynamicResource B.MediaLine}" Margin="10,0" />
 
             <!-- 画面适配：点一下在 适应→铺满→拉伸→原始 之间循环 -->
-            <Button x:Name="BtnFit" Style="{StaticResource S.Btn}" Content="适应" Padding="12,6" FontSize="12"
-                    AutomationProperties.Name="画面适配" Click="BtnFit_Click" MinWidth="58"
+            <Button x:Name="BtnFit" Style="{StaticResource S.BtnMedia}" Content="适应" Padding="12,6" FontSize="12"
+                    AutomationProperties.Name="适应（画面适配）" Click="BtnFit_Click" MinWidth="58"
                     ToolTip="适应 → 铺满 → 拉伸 → 原始" />
 
-            <Button x:Name="BtnZoomOut" Style="{StaticResource S.BtnIcon}" Content="&#xE738;" Margin="8,0,0,0"
+            <Button x:Name="BtnZoomOut" Style="{StaticResource S.BtnIconMedia}" Content="&#xE738;" Margin="8,0,0,0"
                     Width="30" AutomationProperties.Name="缩小" Click="BtnZoomOut_Click" ToolTip="缩小 10%（下限 50%）" />
 
             <TextBlock x:Name="TxtZoom" Width="50" TextAlignment="Center" VerticalAlignment="Center"
-                       FontSize="11.5" Foreground="{DynamicResource B.TextDim}" FontFamily="{DynamicResource F.Mono}" Text="100%" />
+                       FontSize="11.5" Foreground="{DynamicResource B.MediaTextDim}" FontFamily="{DynamicResource F.Mono}" Text="100%" />
 
-            <Button x:Name="BtnZoomIn" Style="{StaticResource S.BtnIcon}" Content="&#xE710;"
+            <Button x:Name="BtnZoomIn" Style="{StaticResource S.BtnIconMedia}" Content="&#xE710;"
                     Width="30" AutomationProperties.Name="放大" Click="BtnZoomIn_Click" ToolTip="放大 10%（上限 200%）" />
 
-            <Button x:Name="BtnZoomReset" Style="{StaticResource S.BtnIcon}" Content="&#xE777;" Margin="4,0,0,0"
+            <Button x:Name="BtnZoomReset" Style="{StaticResource S.BtnIconMedia}" Content="&#xE777;" Margin="4,0,0,0"
                     AutomationProperties.Name="缩放复位" Click="BtnZoomReset_Click" ToolTip="缩放复位到 100%" />
 
-            <Border Width="1" Height="20" Background="{DynamicResource B.Line}" Margin="10,0" />
+            <Border Width="1" Height="20" Background="{DynamicResource B.MediaLine}" Margin="10,0" />
 
-            <Button x:Name="BtnShot" Style="{StaticResource S.BtnIcon}" Content="&#xE722;" Width="34"
+            <Button x:Name="BtnShot" Style="{StaticResource S.BtnIconMedia}" Content="&#xE722;" Width="34"
                     AutomationProperties.Name="截屏" Click="BtnShot_Click" ToolTip="截取当前画面（Ctrl+Alt+S）" />
-            <Button x:Name="BtnRec" Style="{StaticResource S.BtnIcon}" Content="&#xE7C8;" Width="34"
+            <Button x:Name="BtnRec" Style="{StaticResource S.BtnIconMedia}" Content="&#xE7C8;" Width="34"
                     AutomationProperties.Name="录制" Click="BtnRec_Click" ToolTip="开始 / 停止录制（Ctrl+Alt+R）" />
 
-            <Border Width="1" Height="20" Background="{DynamicResource B.Line}" Margin="10,0" />
+            <Border Width="1" Height="20" Background="{DynamicResource B.MediaLine}" Margin="10,0" />
 
             <!-- 小窗：主窗口最小化时自动出现；这里也可以随时手动开关（画中画） -->
-            <Button x:Name="BtnMini" Style="{StaticResource S.BtnIcon}" Content="&#xE7C4;" Width="34"
+            <Button x:Name="BtnMini" Style="{StaticResource S.BtnIconMedia}" Content="&#xE7C4;" Width="34"
                     AutomationProperties.Name="小窗" Click="BtnMini_Click"
                     ToolTip="小窗显示画面（最小化时自动出现）" />
         </StackPanel>

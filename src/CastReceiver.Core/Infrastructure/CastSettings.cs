@@ -6,8 +6,33 @@ namespace CastReceiver.Core.Infrastructure;
 /// <summary>应用配置：设备名、端口、播放器与 Miracast 选项。持久化到 %LocalAppData%\CastReceiver\settings.json。</summary>
 public sealed class CastSettings
 {
-    /// <summary>手机端投屏列表里显示的名字。</summary>
-    public string DeviceName { get; set; } = "PC";   // 隐私优先：中性名称，不在别人手机的投屏列表里暴露身份
+    /// <summary>
+    /// 手机端投屏列表里显示的名字。
+    /// 默认＝**当前 Windows 账户名**（按用户 2026-10-11 的要求改；以前固定叫 "PC"）：
+    /// 一个网段里可能有好几台电脑，手机列表里显示账户名才认得出该选哪一台。
+    /// </summary>
+    public string DeviceName { get; set; } = DefaultDeviceName;
+
+    /// <summary>
+    /// 默认设备名：当前 Windows 账户名（取不到就退回程序名，绝不显示空名字 ——
+    /// 空名字会让手机端列表里出现一行没有名字的条目）。
+    /// </summary>
+    public static string DefaultDeviceName => NormalizeAccountName(Environment.UserName);
+
+    /// <summary>账户名的兜底规则（空/空白 → 程序名）。抽成纯函数是为了能自检。</summary>
+    public static string NormalizeAccountName(string? accountName)
+        => string.IsNullOrWhiteSpace(accountName) ? "投屏Window" : accountName.Trim();
+
+    /// <summary>
+    /// 这个名字是不是"用户从没改过"（空，或者还是旧版本的默认值 "PC"）。
+    /// 老版本存过 "PC" 的用户升级后要自动换成账户名；**用户自己填过的名字一律不动**。
+    /// </summary>
+    public static bool IsDefaultDeviceName(string? name)
+        => string.IsNullOrWhiteSpace(name) || name.Trim().Equals("PC", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>把配置里存下来的设备名解析成"这次真正要用的名字"。</summary>
+    public static string ResolveDeviceName(string? stored)
+        => IsDefaultDeviceName(stored) ? DefaultDeviceName : stored!.Trim();
 
     /// <summary>DLNA 内嵌 HTTP 服务端口。</summary>
     public int HttpPort { get; set; } = 2869;
@@ -42,8 +67,12 @@ public sealed class CastSettings
     public double MiniTop { get; set; } = double.NaN;
     public double MiniWidth { get; set; } = 384;
 
-    /// <summary>默认高度让画面区域正好接近 16:9（384×216），避免小窗一开就上下留黑边。</summary>
-    public double MiniHeight { get; set; } = 218;
+    /// <summary>
+    /// 默认高度 = 画面 218（384 宽下接近 16:9，一开就不留黑边）+ 控制条常驻占位 34。
+    /// 早先这里是 218 —— 那是"控制条还没常驻"时的画面高度；现在控制条恒占 34px，
+    /// 默认值必须跟着变成 252，否则新建的小窗会比设计矮 34px。
+    /// </summary>
+    public double MiniHeight { get; set; } = 252;
 
     /// <summary>投屏开始时自动把音频输出切到指定设备。</summary>
     public bool AudioSwitchEnabled { get; set; }
@@ -206,13 +235,15 @@ public sealed class CastSettings
     /// 用哪个启动视频：内置片段的 key（如 <c>fleet</c>），或 <c>file:完整路径</c> 表示用户导入的文件。
     /// 留空＝默认内置。导入的文件**直接播放、不转码**。
     /// </summary>
-    public string IntroSource { get; set; } = "";
+    public string IntroSource { get; set; } = "builtin";   // 内置开场（随安装包发布；用户也可以改成 file:自己的文件）
 
     /// <summary>从第几秒开始播（0＝从头）。只裁时长，不动画质。</summary>
-    public double IntroStart { get; set; }
+    /// <summary>内置开场的起播点（秒）。1.55 对应源片段 47.55s —— 裁剪时开头多留了 1.55s。</summary>
+    public double IntroStart { get; set; } = 1.55;
 
     /// <summary>播到第几秒结束（0＝到片尾）。</summary>
-    public double IntroEnd { get; set; }
+    /// <summary>内置开场的结束点（秒）。34.70 对应源片段 80.70s（源总长 80.71s，所以正好到片尾）。</summary>
+    public double IntroEnd { get; set; } = 34.70;
 
     /// <summary>
     /// 额外延长多少秒：正片放完后**停在最后一帧**再展示这么久（0＝不延长）。
@@ -280,9 +311,24 @@ public sealed class CastSettings
                Math.Clamp(IntroCropLeft, 0, 0.45), Math.Clamp(IntroCropRight, 0, 0.45))
             : (0, 0, 0, 0);
 
-    // ---------------- 安卓 adb 鼠标控制（⑧） ----------------
+    // ---------------- 电脑控制手机（安卓 · adb 无线） ----------------
 
-    /// <summary>用鼠标控制手机（点击→点按、滚轮/拖动→滑动）。默认关闭。</summary>
+    // ---------------- 电脑控制手机（安卓 · adb 无线） ----------------
+
+    /// <summary>
+    /// 「电脑控制手机」**总开关**（设置 → 安全）。**默认关闭**。
+    ///
+    /// 按用户 2026-10-16 的要求，这个功能默认下线：关着的时候界面整块不出现、
+    /// 程序完全不碰 adb（不起进程、不做发现、不轮询）。用户想用自己在设置里打开，
+    /// 不需要重新编译；产品层面是否保留该功能另见 <see cref="Features.AndroidRemoteControl"/>。
+    /// </summary>
+    public bool AdbControlEnabled { get; set; }
+
+    /// <summary>
+    /// 用鼠标/键盘控制手机（点击＝点按、滚轮＝滑动、系统键、文字）。默认关闭，但**投屏时会自动打开**
+    /// （见 <see cref="AdbAutoConnect"/>）：用户要的是"手机投上来就能用，电脑端不用点任何东西"。
+    /// 仅在 <see cref="AdbControlEnabled"/> 打开后才有意义。
+    /// </summary>
     public bool AdbMouseControl { get; set; }
 
     /// <summary>手机无线调试的主机地址（上次填过的，下次自动带出来）。</summary>
@@ -294,7 +340,11 @@ public sealed class CastSettings
     /// <summary>手机无线调试的**配对**端口（「使用配对码配对设备」里的那个）。</summary>
     public string AdbPairPort { get; set; } = "";
 
-    /// <summary>启动/投屏开始时若已经记过地址，就自动尝试连一次（连不上不影响投屏）。</summary>
+    /// <summary>
+    /// **投屏时自动连接手机控制**（设置 → 安全里可关）。默认开。
+    /// 打开时：安卓手机投上来的那一刻，自动发现并连上它、并自动打开「电脑控制手机」，
+    /// 手机端只需要投屏、电脑端不需要任何操作。连不上不影响投屏本身。
+    /// </summary>
     public bool AdbAutoConnect { get; set; } = true;
 
     /// <summary>
@@ -365,7 +415,8 @@ public sealed class CastSettings
         catch { s = new CastSettings(); }
 
         if (string.IsNullOrWhiteSpace(s.DeviceUuid)) s.DeviceUuid = Guid.NewGuid().ToString("D");
-        if (string.IsNullOrWhiteSpace(s.DeviceName)) s.DeviceName = "PC";
+        // 设备名：没填过、或还是旧版本的 "PC"，都换成当前 Windows 账户名；用户改过的名字保留
+        s.DeviceName = ResolveDeviceName(s.DeviceName);
         if (s.HttpPort is < 1024 or > 65535) s.HttpPort = 2869;
         s.FilePath = path;
         s.Save();

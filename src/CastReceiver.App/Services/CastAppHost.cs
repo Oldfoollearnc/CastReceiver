@@ -101,6 +101,9 @@ public sealed class CastAppHost : IDisposable
         Miracast.ForgetDeviceHistory = Settings.ForgetDeviceHistory;
         Miracast.IdleBroadcastRefreshMinutes = Settings.IdleBroadcastRefreshMinutes;
         Log.PrivacyMode = Settings.PrivacyLog;
+        // 设备名以**当前设置**为准：接收端内部的空闲刷新/看门狗恢复都读它，
+        // 否则改完名字之后这些自动重启会把名字改回旧的（见 MiracastService.DesiredDeviceName）
+        Miracast.DesiredDeviceName = Settings.DeviceName;
         var result = await Miracast.StartAsync(Settings.DeviceName, Settings.MiracastConfirmConnection);
         Publish(result.Success ? result.Message : $"{result.Message} —— {result.Detail}");
         StateChanged?.Invoke();
@@ -111,6 +114,42 @@ public sealed class CastAppHost : IDisposable
     {
         await Miracast.StopAsync();
         StateChanged?.Invoke();
+    }
+
+    /// <summary>
+    /// 设置里改完设备名后调用：让新名字**当场生效**（不需要重启程序）。
+    ///
+    /// 两条链路的名字来源不同，都要处理：
+    /// <list type="bullet">
+    /// <item>Miracast：由接收端重新广播（有设备在投时不打断，见 ApplyDeviceNameAsync）；</item>
+    /// <item>AirPlay：名字进 mDNS 实例名，必须重新广播 —— 但没有会话时才敢重播，
+    /// 否则会把正在投屏的 iPhone 踢下线。</item>
+    /// </list>
+    /// 返回一句可直接显示给用户的结果说明。
+    /// </summary>
+    public async Task<string> ApplyDeviceNameAsync()
+    {
+        string name = Settings.DeviceName;
+        Miracast.DesiredDeviceName = name;
+        DeviceNameApplyResult result = await Miracast.ApplyDeviceNameAsync(name).ConfigureAwait(true);
+        string message = result.Message;
+
+        if (AirPlay.IsRunning)
+        {
+            if (AirPlay.SessionCount == 0)
+            {
+                StopAirPlay();
+                bool ok = StartAirPlay();
+                message = ok ? $"{message}；AirPlay 已按“{name}”重新广播" : $"{message}；AirPlay 重新广播失败";
+            }
+            else
+            {
+                message = $"{message}；AirPlay 有设备正在投屏，断开后生效";
+            }
+        }
+
+        StateChanged?.Invoke();
+        return message;
     }
 
     /// <summary>启动 AirPlay 接收端（同步：只是绑端口 + 广播，很快）。返回是否已运行。</summary>

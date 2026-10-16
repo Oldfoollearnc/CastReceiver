@@ -92,6 +92,9 @@ public partial class MultiViewTile : UserControl
         ToolTip = live
             ? $"{label}（第 {index} 路，共 {total} 路）· 点一下放大这一路"
             : $"{label}（第 {index} 路，共 {total} 路）· 画面似乎停住了";
+        // 读屏拿到的名字要带上这是第几路，否则多路并排时全是「并排画面格」，分不清
+        System.Windows.Automation.AutomationProperties.SetName(Chrome,
+            total > 1 ? $"{label}，第 {index} 路，共 {total} 路" : label);
     }
 
     private void Chrome_Click(object sender, MouseButtonEventArgs e)
@@ -102,6 +105,16 @@ public partial class MultiViewTile : UserControl
             return;
         }
 
+        e.Handled = true;
+        Chrome.Focus();          // 鼠标点过之后焦点跟过来，接着就能用键盘操作
+        FocusRequested?.Invoke(SessionId);
+    }
+
+    /// <summary>键盘等效操作：Enter / 空格 与鼠标点击一致（原来只有鼠标能放大某一路）。</summary>
+    private void Chrome_KeyDown(object sender, KeyEventArgs e)
+    {
+        if (_focused) return;
+        if (e.Key is not (Key.Enter or Key.Space)) return;
         e.Handled = true;
         FocusRequested?.Invoke(SessionId);
     }

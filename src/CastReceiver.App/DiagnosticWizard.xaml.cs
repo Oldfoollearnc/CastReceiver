@@ -106,6 +106,8 @@ public partial class DiagnosticWizard : Window
         {
             _timer.Stop();
             BtnClose.Content = "完成";
+            // WCAG 2.5.3：可访问名必须包含可见文字，否则语音控制说「点击完成」会失败
+            System.Windows.Automation.AutomationProperties.SetName(BtnClose, "完成");
             TxtProgress.Text = "诊断完成";
             return;
         }

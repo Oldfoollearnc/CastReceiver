@@ -14,7 +14,9 @@ param(
     [int]$StartupWaitSeconds = 12,
     [string]$VaultRoot = "$env:TEMP\CastReceiverVaultSmoke",
     [string]$Account = "smokeuser",
-    [string]$Password = "Smoke12345"
+    [string]$Password = "Smoke12345",
+    # 当前 UI 里「我的库」入口只在投屏会话中可见；用 --demo-cast 让入口出现（本地样例视频冒充镜像）
+    [switch]$DemoCast
 )
 
 Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes, System.Windows.Forms
@@ -78,6 +80,16 @@ function Find-Input($win, [string]$name) {
     return $win.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $cond)
 }
 
+# 按名字列表找第一个命中的控件（不报错、不计失败数）：
+# 入口改过名（「我的库」→「打开我的库」），逐个试比写死一个名字稳。
+function Find-First($win, [string[]]$names) {
+    foreach ($n in $names) {
+        $el = Find-ByName $win $n
+        if ($el) { return [pscustomobject]@{ El = $el; Name = $n } }
+    }
+    return $null
+}
+
 function Invoke-ByName($win, [string]$name) {
     $el = Find-ByName $win $name
     if (-not $el) { Write-Bad "未找到控件：$name"; return $false }
@@ -110,7 +122,9 @@ $logPath = Join-Path $env:LOCALAPPDATA "CastReceiver\castreceiver.log"
 $logLinesAtStart = if (Test-Path $logPath) { (Get-Content $logPath -Encoding UTF8 | Measure-Object -Line).Lines } else { 0 }
 
 Write-Step "启动程序（隔离实例）"
-$p = Start-Process -FilePath $Exe -ArgumentList "--no-intro --vault-root `"$VaultRoot`" --instance-suffix smoke" -PassThru
+$launchArgs = "--no-intro --vault-root `"$VaultRoot`" --instance-suffix smoke"
+if ($DemoCast) { $launchArgs += " --demo-cast" }
+$p = Start-Process -FilePath $Exe -ArgumentList $launchArgs -PassThru
 Start-Sleep -Seconds $StartupWaitSeconds
 
 $main = Find-Window $p.Id "投屏Window"
@@ -120,7 +134,19 @@ Write-Ok "主窗口已就绪：$($main.Current.Name)"
 # ---------------------------------------------------------------- 打开我的库 → 首次要建账号
 
 Write-Step "点「我的库」（首次应弹出创建账号）"
-Invoke-ByName $main "我的库" | Out-Null
+# 入口名字变过，且只在投屏会话里可见：逐个试，找不到时给出能照着做的提示
+$entry = Find-First $main @("打开我的库", "我的库")
+if ($entry) {
+    Write-Ok "找到入口：$($entry.Name)"
+    try {
+        $entry.El.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
+        Write-Ok "已点击：$($entry.Name)"
+    } catch { Write-Bad "点击失败：$($entry.Name)（$($_.Exception.Message)）" }
+} else {
+    Write-Bad "主窗口里找不到「打开我的库」/「我的库」入口"
+    Write-Host "        提示：未投屏时主窗口不再提供该入口（只在投屏会话卡片里，或走托盘菜单）。" -ForegroundColor Yellow
+    Write-Host "        加 -DemoCast 重跑即可让入口出现（用本地样例视频冒充镜像）。" -ForegroundColor Yellow
+}
 Start-Sleep -Seconds 3
 
 $setup = Find-Window $p.Id "创建加密账号" 20

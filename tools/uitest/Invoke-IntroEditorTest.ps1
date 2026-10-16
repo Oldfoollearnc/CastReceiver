@@ -93,7 +93,11 @@ function Open-IntroPage([string]$settingsRoot, [string]$vaultRoot, [string]$suff
     Start-Sleep -Seconds 10
     $main = [System.Windows.Automation.AutomationElement]::FromHandle([IET]::Find($proc.Id, "投屏Window"))
     if (-not $main) { return @{ Proc = $proc; Settings = $null } }
-    Click-El (Find-El $main "打开设置" $null) | Out-Null
+    # 顶栏齿轮的可访问名是「设置」（"打开设置" 只是它的 ToolTip 文本，UIA Name 里没有）。
+    # 先试「设置」，再退回旧名，避免改名后整个脚本静默失效。
+    if (-not (Click-El (Find-El $main "设置" $null))) {
+        Click-El (Find-El $main "打开设置" $null) | Out-Null
+    }
     Start-Sleep -Seconds 4
     $settings = [System.Windows.Automation.AutomationElement]::FromHandle([IET]::Find($proc.Id, "设置"))
     if ($settings) {

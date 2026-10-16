@@ -30,15 +30,13 @@ public partial class App : Application
     /// <summary>单实例互斥名的后缀（--instance-suffix）：供界面冒烟测试并行跑一个隔离实例。</summary>
     public static string InstanceSuffix { get; set; } = "";
 
-    /* ⑧ 已停用：自检用的「mDNS 发现结果」注入口子（保留，恢复 ⑧ 时一起恢复）
     /// <summary>
-    /// 自检用（--adb-discovery &lt;文件&gt;）：把 ⑧ 的「mDNS 发现结果」换成文件里的内容
+    /// 自检用（--adb-discovery &lt;文件&gt;）：把「电脑控制手机」的 mDNS 发现结果换成文件里的内容
     /// （不设则走真实的 <c>adb mdns services</c>）。
-    /// 存在的理由：安卓模拟器广播的是它自己的 NAT 地址，宿主机连不上，
-    /// 于是"只打开开关就自动连上"这条链路在模拟器上没法端到端验证。
+    /// 存在的理由：真机上"只打开开关就自动连上"这条链路在无人值守的自检里跑不了
+    /// （发现的是真实手机，脚本没法保证环境），注入一段真实格式的发现结果就能把这条链路验完。
     /// </summary>
     public static string? AdbDiscoveryFile { get; set; }
-    */
 
     /// <summary>
     /// 演示模式（--demo-cast）：用本地样例视频冒充手机镜像，
@@ -142,8 +140,9 @@ public partial class App : Application
                 System.Windows.Media.Color.FromArgb(0x24, color.R, color.G, color.B));
             overlay["B.AccentLine"] = new System.Windows.Media.SolidColorBrush(
                 System.Windows.Media.Color.FromArgb(0x70, color.R, color.G, color.B));
+            // 焦点环光晕：这个 alpha 直接决定键盘焦点可见度，太淡等于没有（0x5A 时几乎看不见）
             overlay["B.FocusRing"] = new System.Windows.Media.SolidColorBrush(
-                System.Windows.Media.Color.FromArgb(0x5A, color.R, color.G, color.B));
+                System.Windows.Media.Color.FromArgb(0x99, color.R, color.G, color.B));
         }
         catch { }
         ThemeChanged?.Invoke();

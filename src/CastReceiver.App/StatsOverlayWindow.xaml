@@ -3,16 +3,18 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         SizeToContent="WidthAndHeight" MaxWidth="360" MaxHeight="300" WindowStyle="None" AllowsTransparency="True" Background="Transparent"
         ShowInTaskbar="False" ShowActivated="False" Topmost="True" ResizeMode="NoResize"
-        FontFamily="{DynamicResource F.Ui}" Foreground="{DynamicResource B.Text}" WindowStartupLocation="Manual" IsHitTestVisible="False">
-    <Border Background="{DynamicResource B.OverlayBgSoft}" BorderBrush="{DynamicResource B.Line}" BorderThickness="1" CornerRadius="12" Padding="13,9">
+        FontFamily="{DynamicResource F.Ui}" Foreground="{DynamicResource B.MediaText}" WindowStartupLocation="Manual" IsHitTestVisible="False">
+    <!-- 这块浮层永远浮在恒黑的画面上，所以走"媒体语境"令牌（B.Media*），不跟主题变白。
+         详见 Themes/Dark.xaml 里的说明。 -->
+    <Border Background="{DynamicResource B.MediaBarSoft}" BorderBrush="{DynamicResource B.MediaLine}" BorderThickness="1" CornerRadius="12" Padding="13,9">
         <StackPanel>
             <StackPanel Orientation="Horizontal">
-                <Ellipse x:Name="Dot" Width="8" Height="8" Fill="{DynamicResource B.Ok}" VerticalAlignment="Center" />
-                <TextBlock x:Name="TxtLine" FontSize="12" Foreground="{DynamicResource B.Text}" Margin="9,0,0,0"
+                <Ellipse x:Name="Dot" Width="8" Height="8" Fill="{DynamicResource B.MediaOk}" VerticalAlignment="Center" />
+                <TextBlock x:Name="TxtLine" FontSize="12" Foreground="{DynamicResource B.MediaText}" Margin="9,0,0,0"
                            VerticalAlignment="Center" FontFamily="{DynamicResource F.Mono}" Text="—" />
             </StackPanel>
             <!-- 明细只留一行、超长省略：用户反馈过这块会越长越高、把画面压住 -->
-            <TextBlock x:Name="TxtDetail" FontSize="10.5" Foreground="{DynamicResource B.TextFaint}" Margin="17,3,0,0"
+            <TextBlock x:Name="TxtDetail" FontSize="11" Foreground="{DynamicResource B.MediaTextDim}" Margin="17,3,0,0"
                        FontFamily="{DynamicResource F.Mono}" Text="" MaxWidth="300" TextWrapping="NoWrap"
                        TextTrimming="CharacterEllipsis" />
 
@@ -26,15 +28,15 @@
                         <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="58" />
                     </Grid.ColumnDefinitions>
-                    <TextBlock x:Name="TxtKbpsLabel" Grid.Column="0" Text="码率" FontSize="9.5"
-                               Foreground="{DynamicResource B.TextFaint}" FontFamily="{DynamicResource F.Mono}"
+                    <TextBlock x:Name="TxtKbpsLabel" Grid.Column="0" Text="码率" FontSize="11"
+                               Foreground="{DynamicResource B.MediaTextDim}" FontFamily="{DynamicResource F.Mono}"
                                VerticalAlignment="Center" />
                     <Canvas x:Name="ChartKbps" Grid.Column="1" Width="176" Height="26" ClipToBounds="True">
-                        <Path x:Name="AreaKbps" Fill="{DynamicResource B.Ok}" Opacity="0.16" />
-                        <Polyline x:Name="LineKbps" Stroke="{DynamicResource B.Ok}" StrokeThickness="1" />
+                        <Path x:Name="AreaKbps" Fill="{DynamicResource B.MediaOk}" Opacity="0.16" />
+                        <Polyline x:Name="LineKbps" Stroke="{DynamicResource B.MediaOk}" StrokeThickness="1" />
                     </Canvas>
-                    <TextBlock x:Name="TxtKbpsValue" Grid.Column="2" Text="—" FontSize="9.5" TextAlignment="Right"
-                               Foreground="{DynamicResource B.Text}" FontFamily="{DynamicResource F.Mono}"
+                    <TextBlock x:Name="TxtKbpsValue" Grid.Column="2" Text="—" FontSize="11" TextAlignment="Right"
+                               Foreground="{DynamicResource B.MediaText}" FontFamily="{DynamicResource F.Mono}"
                                VerticalAlignment="Center" />
                 </Grid>
                 <Grid Margin="0,3,0,0">
@@ -43,15 +45,15 @@
                         <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="58" />
                     </Grid.ColumnDefinitions>
-                    <TextBlock x:Name="TxtLagLabel" Grid.Column="0" Text="滞后" FontSize="9.5"
-                               Foreground="{DynamicResource B.TextFaint}" FontFamily="{DynamicResource F.Mono}"
+                    <TextBlock x:Name="TxtLagLabel" Grid.Column="0" Text="滞后" FontSize="11"
+                               Foreground="{DynamicResource B.MediaTextDim}" FontFamily="{DynamicResource F.Mono}"
                                VerticalAlignment="Center" />
                     <Canvas x:Name="ChartLag" Grid.Column="1" Width="176" Height="26" ClipToBounds="True">
-                        <Path x:Name="AreaLag" Fill="{DynamicResource B.Warn}" Opacity="0.16" />
-                        <Polyline x:Name="LineLag" Stroke="{DynamicResource B.Warn}" StrokeThickness="1" />
+                        <Path x:Name="AreaLag" Fill="{DynamicResource B.MediaWarn}" Opacity="0.16" />
+                        <Polyline x:Name="LineLag" Stroke="{DynamicResource B.MediaWarn}" StrokeThickness="1" />
                     </Canvas>
-                    <TextBlock x:Name="TxtLagValue" Grid.Column="2" Text="—" FontSize="9.5" TextAlignment="Right"
-                               Foreground="{DynamicResource B.Text}" FontFamily="{DynamicResource F.Mono}"
+                    <TextBlock x:Name="TxtLagValue" Grid.Column="2" Text="—" FontSize="11" TextAlignment="Right"
+                               Foreground="{DynamicResource B.MediaText}" FontFamily="{DynamicResource F.Mono}"
                                VerticalAlignment="Center" />
                 </Grid>
             </StackPanel>

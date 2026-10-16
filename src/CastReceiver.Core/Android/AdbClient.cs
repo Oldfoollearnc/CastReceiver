@@ -29,6 +29,22 @@ public sealed record AdbResult(int ExitCode, string StdOut, string StdErr, bool 
     }
 }
 
+/// <summary>一次只取字节的 adb 调用结果（手机截屏这类：走文本读会被 UTF-8 解码弄坏二进制）。</summary>
+public sealed record AdbBinaryResult(int ExitCode, byte[] StdOut, string StdErr, bool TimedOut, string CommandLine)
+{
+    public bool Ok => ExitCode == 0 && !TimedOut && StdOut.Length > 0;
+
+    /// <summary>stderr（二进制结果里 stdout 不能当文本看）。</summary>
+    public string ErrorText
+    {
+        get
+        {
+            string text = (StdErr ?? "").Trim();
+            return text.Length == 0 ? $"（退出码 {ExitCode}{(TimedOut ? "，超时" : "")}）" : text;
+        }
+    }
+}
+
 /// <summary>
 /// adb 可执行文件的定位与调用。
 ///
@@ -48,6 +64,12 @@ public sealed class AdbClient
         _exe = executablePath ?? throw new ArgumentNullException(nameof(executablePath));
     }
 
+    /// <summary>
+    /// adb 路径覆盖（**只给自检/验证用**：指到一个桩程序上，就能在没有真机的情况下
+    /// 端到端验"命令到底发对了没有"）。正常运行一直是 null，走下面的查找顺序。
+    /// </summary>
+    public static string? PathOverride { get; set; }
+
     /// <summary>本次实际使用的 adb 路径（界面上要如实显示，便于排查）。</summary>
     public string ExecutablePath => _exe;
 
@@ -64,6 +86,16 @@ public sealed class AdbClient
     public static string? Locate()
     {
         var candidates = new List<string>();
+
+        // 自检用的覆盖优先：验的是"我们的命令发对了没有"，与真机在不在无关
+        try
+        {
+            if (!string.IsNullOrWhiteSpace(PathOverride) && File.Exists(PathOverride)) return PathOverride;
+        }
+        catch
+        {
+            // 忽略
+        }
 
         try
         {
@@ -176,6 +208,61 @@ public sealed class AdbClient
     /// <summary>指定设备的命令（<c>-s serial</c>）。</summary>
     public AdbResult RunOn(string serial, string arguments, int timeoutMs = 20000)
         => Run($"-s {Quote(serial)} {arguments}", timeoutMs);
+
+    /// <summary>
+    /// 跑一条**输出是二进制**的 adb 命令（手机截屏：<c>exec-out screencap -p</c>）。
+    /// 必须走原始字节：<see cref="Run"/> 按 UTF-8 读文本，会把 PNG 里的字节换掉（图就打不开了）。
+    /// </summary>
+    public AdbBinaryResult RunBinary(string arguments, int timeoutMs = 20000)
+    {
+        var info = new ProcessStartInfo(_exe, arguments)
+        {
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            StandardErrorEncoding = Encoding.UTF8,
+        };
+
+        string commandLine = $"adb {arguments}";
+        try
+        {
+            using var process = new Process { StartInfo = info };
+            if (!process.Start())
+            {
+                return new AdbBinaryResult(-1, Array.Empty<byte>(), "无法启动 adb 进程", false, commandLine);
+            }
+
+            using var buffer = new MemoryStream();
+            Task copy = process.StandardOutput.BaseStream.CopyToAsync(buffer);
+            Task<string> error = process.StandardError.ReadToEndAsync();
+
+            bool exited = process.WaitForExit(Math.Max(1000, timeoutMs));
+            if (!exited)
+            {
+                try { process.Kill(entireProcessTree: true); } catch { }
+                try { copy.Wait(3000); } catch { }
+                return new AdbBinaryResult(-1, buffer.ToArray(), SafeError(error), true, commandLine);
+            }
+
+            try { copy.Wait(5000); } catch { }
+            return new AdbBinaryResult(process.ExitCode, buffer.ToArray(), SafeError(error), false, commandLine);
+        }
+        catch (Exception ex)
+        {
+            return new AdbBinaryResult(-1, Array.Empty<byte>(), $"{ex.GetType().Name}: {ex.Message}", false, commandLine);
+        }
+    }
+
+    /// <summary>指定设备的二进制命令。</summary>
+    public AdbBinaryResult RunOnBinary(string serial, string arguments, int timeoutMs = 20000)
+        => RunBinary($"-s {Quote(serial)} {arguments}", timeoutMs);
+
+    private static string SafeError(Task<string> error)
+    {
+        try { return error.Wait(2000) ? error.Result : ""; }
+        catch { return ""; }
+    }
 
     /// <summary>参数里可能有空格/特殊字符时加引号。</summary>
     public static string Quote(string value) => $"\"{value.Replace("\"", "\\\"")}\"";

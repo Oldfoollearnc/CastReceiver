@@ -50,6 +50,13 @@ internal static class AirPlaySelfTest
 
     private const string Group = "J AirPlay";
 
+    /// <summary>非 IDR 的一帧（AUD 9 + 非 IDR slice 1）。</summary>
+    private static readonly byte[] NonIdrFrame = { 0, 0, 0, 1, 0x09, 0x10, 0, 0, 0, 1, 0x41, 0x9a };
+
+    /// <summary>IDR 的一帧（SPS 7 + PPS 8 + IDR slice 5）——注入过配置的帧必须也算关键帧。</summary>
+    private static readonly byte[] IdrFrame =
+        { 0, 0, 0, 1, 0x67, 0x42, 0, 0, 0, 1, 0x68, 0xce, 0, 0, 0, 1, 0x65, 0x88 };
+
     internal static void Run(Action<string, string, SelfTestRunner.Verdict, string> add)
     {
         ArgumentNullException.ThrowIfNull(add);
@@ -60,6 +67,8 @@ internal static class AirPlaySelfTest
         CheckPlist(add);
         CheckDiscovery(add);
         CheckMirrorParsing(add);
+        CheckKeyFrameDetection(add);
+        CheckFrameGate(add);
         CheckVideoKeyDerivation(add);
     }
 
@@ -147,6 +156,39 @@ internal static class AirPlaySelfTest
             bool continuityOk = split.AsSpan().SequenceEqual(expected);
             add(Group, "AES-128-CTR 密钥流跨调用连续（含空段）", continuityOk,
                 continuityOk ? "分段解密与一次解密结果相同" : "分段结果与整段不一致");
+
+            // 长载荷（10000 字节，跨多个密钥流块）：与"每 16 字节一个计数器块"的朴素参照实现
+            // 逐字节比对。这一条专门守住"RefillKeystream 改成一次算 4096 字节"之后语义没变。
+            byte[] plain = new byte[10000];
+            for (int i = 0; i < plain.Length; i++)
+            {
+                plain[i] = (byte)(i * 31 + 7);
+            }
+
+            byte[] reference = NaiveCtr(key, iv, plain);
+            byte[] fast = (byte[])plain.Clone();
+            using (var ctr = new Aes128Ctr(key, iv))
+            {
+                ctr.Transform(fast);
+            }
+            bool longOk = fast.AsSpan().SequenceEqual(reference);
+
+            // 再按"每段长度都跨块边界"的方式分段调用一次，确认分段与整段等价
+            byte[] splitLong = (byte[])plain.Clone();
+            using (var ctr = new Aes128Ctr(key, iv))
+            {
+                int[] cuts = { 0, 4095, 4096, 4097, 8000, splitLong.Length };
+                for (int i = 0; i + 1 < cuts.Length; i++)
+                {
+                    ctr.Transform(splitLong.AsSpan(cuts[i], cuts[i + 1] - cuts[i]));
+                }
+            }
+            bool splitLongOk = splitLong.AsSpan().SequenceEqual(reference);
+
+            add(Group, "AES-128-CTR 长载荷跨块一致（10000 字节，含跨块分段）", longOk && splitLongOk,
+                longOk && splitLongOk
+                    ? "整段与分段均与朴素 CTR 参照实现逐字节一致"
+                    : $"整段一致={longOk}，跨块分段一致={splitLongOk}");
         }
         catch (Exception ex)
         {
@@ -154,8 +196,111 @@ internal static class AirPlaySelfTest
         }
     }
 
-    // ---------------------------------------------------------------- 二进制 plist
+    /// <summary>
+    /// 朴素的 CTR 参照实现：每 16 字节一个计数器块、大端 +1（与 OpenSSL 的
+    /// <c>EVP_aes_128_ctr</c> 语义一致）。它自己由上面的 NIST 已知答案守着，
+    /// 这里用它当"独立实现"来验产品里那份"一次算 4096 字节"的快版本。
+    /// </summary>
+    private static byte[] NaiveCtr(byte[] key, byte[] iv, byte[] plain)
+    {
+        using var aes = System.Security.Cryptography.Aes.Create();
+        aes.Mode = System.Security.Cryptography.CipherMode.ECB;
+        aes.Padding = System.Security.Cryptography.PaddingMode.None;
+        aes.Key = key;
+        using var encryptor = aes.CreateEncryptor();
 
+        var counter = (byte[])iv.Clone();
+        var block = new byte[16];
+        var output = new byte[plain.Length];
+        for (int offset = 0; offset < plain.Length; offset += 16)
+        {
+            encryptor.TransformBlock(counter, 0, 16, block, 0);
+            for (int i = 0; i < 16 && offset + i < plain.Length; i++)
+            {
+                output[offset + i] = (byte)(plain[offset + i] ^ block[i]);
+            }
+            for (int i = 15; i >= 0; i--)
+            {
+                if (++counter[i] != 0)
+                {
+                    break;
+                }
+            }
+        }
+        return output;
+    }
+
+    // ---------------------------------------------------------------- 关键帧与直播丢帧策略
+
+    private static void CheckKeyFrameDetection(Action<string, string, SelfTestRunner.Verdict, string> add)
+    {
+        try
+        {
+            bool nonIdrOk = !MirrorStreamReceiver.IsKeyFrame(NonIdrFrame);
+            bool idrOk = MirrorStreamReceiver.IsKeyFrame(IdrFrame);
+
+            // 坏数据不能抛异常（长度不足 4、没有起始码）
+            bool shortOk, junkOk;
+            try { shortOk = !MirrorStreamReceiver.IsKeyFrame(new byte[] { 0, 0, 0 }); }
+            catch (Exception) { shortOk = false; }
+            try { junkOk = !MirrorStreamReceiver.IsKeyFrame(new byte[] { 1, 2, 3, 4, 5, 6, 7, 8 }); }
+            catch (Exception) { junkOk = false; }
+
+            bool ok = nonIdrOk && idrOk && shortOk && junkOk;
+            add(Group, "关键帧识别（含注入 SPS/PPS 的帧，坏数据不崩）", ok,
+                ok ? "非 IDR 判否、含 SPS+PPS 的 IDR 判是、坏数据安全返回 false"
+                   : $"非IDR={nonIdrOk} IDR={idrOk} 短数据={shortOk} 无起始码={junkOk}");
+        }
+        catch (Exception ex)
+        {
+            add(Group, "关键帧识别", false, $"{ex.GetType().Name}: {ex.Message}");
+        }
+    }
+
+    private static void CheckFrameGate(Action<string, string, SelfTestRunner.Verdict, string> add)
+    {
+        try
+        {
+            var start = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+            var gate = new MirrorFrameGate(capacity: 4, maxWaitForKeyFrameSeconds: 2.0);
+
+            // ① 还有余量：正常收下
+            FrameDisposition d1 = gate.Offer(NonIdrFrame, 0, start, out bool c1);
+            // ② 积压到上限且这一帧不是关键帧：丢弃、清空积压、转入"等关键帧"
+            FrameDisposition d2 = gate.Offer(NonIdrFrame, 4, start, out bool c2);
+            bool waiting = gate.WaitingForKeyFrame;
+            // ③ 等待期间的非关键帧继续丢（不清积压，积压已经空了）
+            FrameDisposition d3 = gate.Offer(NonIdrFrame, 1, start.AddMilliseconds(200), out bool c3);
+            // ④ 关键帧到达：清空积压后收下，退出等待
+            FrameDisposition d4 = gate.Offer(IdrFrame, 2, start.AddMilliseconds(400), out bool c4);
+            bool resumed = !gate.WaitingForKeyFrame;
+
+            // ⑤ 超时兜底：进入等待后 2 秒仍没有关键帧 → 丢这一帧、退出等待
+            var timeoutGate = new MirrorFrameGate(capacity: 4, maxWaitForKeyFrameSeconds: 2.0);
+            timeoutGate.Offer(NonIdrFrame, 4, start, out _);                 // 进入等待
+            FrameDisposition d5 = timeoutGate.Offer(NonIdrFrame, 1, start.AddSeconds(2.1), out bool c5);
+            bool timeoutOk = d5 == FrameDisposition.DropTimeoutProbe && !timeoutGate.WaitingForKeyFrame;
+            // ⑥ 超时之后的下一帧：正常收下（画面恢复推进，不再一直冻着）
+            FrameDisposition d6 = timeoutGate.Offer(NonIdrFrame, 0, start.AddSeconds(2.2), out _);
+
+            bool ok = d1 == FrameDisposition.Accept
+                      && d2 == FrameDisposition.DropOverflow && c2 && waiting
+                      && d3 == FrameDisposition.DropWaitingKey && !c3
+                      && d4 == FrameDisposition.AcceptAfterResync && c4 && resumed
+                      && timeoutOk && c5 && d6 == FrameDisposition.Accept;
+
+            add(Group, "直播丢帧策略：积压→等关键帧→恢复（含超时兜底）", ok,
+                ok ? "超容量转等关键帧、等待期丢非关键帧、IDR 到达即恢复、2 秒超时兜底"
+                   : $"d1={d1} d2={d2}(清积压={c2},等待={waiting}) d3={d3}(清积压={c3}) "
+                     + $"d4={d4}(清积压={c4},已恢复={resumed}) 超时={timeoutOk}(清积压={c5}) d6={d6}");
+        }
+        catch (Exception ex)
+        {
+            add(Group, "直播丢帧策略", false, $"{ex.GetType().Name}: {ex.Message}");
+        }
+    }
+
+    // ---------------------------------------------------------------- 二进制 plist
     private static void CheckPlist(Action<string, string, SelfTestRunner.Verdict, string> add)
     {
         try

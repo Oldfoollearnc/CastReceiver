@@ -62,7 +62,7 @@
                 <!-- 密码 -->
                 <TextBlock Text="密码" FontSize="12" Foreground="{DynamicResource B.TextFaint}" Margin="0,16,0,0" />
                 <Grid Margin="0,7,0,0">
-                    <PasswordBox x:Name="TxtPassword" Style="{StaticResource S.FieldPwd}" AutomationProperties.Name="解锁密码"
+                    <PasswordBox x:Name="TxtPassword" InputMethod.IsInputMethodEnabled="False" Style="{StaticResource S.FieldPwd}" AutomationProperties.Name="解锁密码"
                                  CaretBrush="{DynamicResource B.Text}" PasswordChar="●"
                                  PasswordChanged="Password_Changed" KeyDown="Password_KeyDown" />
                     <TextBlock x:Name="PhPassword" Text="输入密码" FontSize="13" Foreground="{DynamicResource B.TextFaint}"

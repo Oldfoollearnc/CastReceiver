@@ -1,0 +1,123 @@
+# 构建与自检。目标：任何一次提交都能在干净环境里跑通"能编译 + 核心链路自检通过"。
+#
+# 不包含的部分（有意为之，需要真机/前台界面，放在发布前手测）：
+#   · 需要手机的 Miracast 端到端、AirPlay 真机
+#   · tools\uitest 下的界面自动化（会启动前台窗口，不适合 CI 共享桌面）
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+env:
+  DOTNET_NOLOGO: "true"
+  DOTNET_CLI_TELEMETRY_OPTOUT: "true"
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: "true"
+
+jobs:
+  build-and-selftest:
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: 检出
+        uses: actions/checkout@v4
+
+      - name: 安装 .NET 10 SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      # 这些工具脚本都是用 Windows PowerShell 5.1 跑的；5.1 读**无 BOM** 的 UTF-8 会按 ANSI 解析，
+      # 中文注释与控件名会变成乱码，脚本直接语法崩溃（编辑工具很容易顺手把 BOM 抹掉）。
+      # 所以把 BOM 与 5.1 可解析性作为硬检查。
+      - name: 检查 .ps1 的 UTF-8 BOM 且能被 PowerShell 5.1 解析
+        shell: pwsh
+        run: |
+          $bad = @()
+          $scripts = @(Get-ChildItem -Recurse -Filter *.ps1 |
+                       Where-Object { $_.FullName -notmatch '\\(obj|bin|_temp)\\' })
+          foreach ($f in $scripts) {
+            $b = [System.IO.File]::ReadAllBytes($f.FullName)
+            if ($b.Length -lt 3 -or $b[0] -ne 0xEF -or $b[1] -ne 0xBB -or $b[2] -ne 0xBF) {
+              $bad += "缺 BOM：$($f.FullName)"
+              continue
+            }
+            & powershell.exe -NoProfile -Command "`$e=`$null; `$null=[System.Management.Automation.Language.Parser]::ParseFile('$($f.FullName)',[ref]`$null,[ref]`$e); if(`$e.Count){ `$e | ForEach-Object { Write-Host `$_.Message }; exit 1 }"
+            if ($LASTEXITCODE -ne 0) { $bad += "5.1 解析失败：$($f.FullName)" }
+          }
+          if ($bad.Count -gt 0) {
+            $bad | ForEach-Object { Write-Host $_ -ForegroundColor Red }
+            throw "脚本检查失败（共 $($bad.Count) 项）"
+          }
+          Write-Host "已检查 $($scripts.Count) 个 .ps1：BOM 与 5.1 解析均通过"
+
+      # 先单独还原，方便区分"还原失败"和"编译失败"
+      - name: 还原
+        run: dotnet restore src\CastReceiver.App\CastReceiver.App.csproj
+
+      - name: 编译（Debug；有错误即失败）
+        run: dotnet build src\CastReceiver.App\CastReceiver.App.csproj -c Debug --no-restore -v minimal
+
+      - name: 编译（Release；发布前的同一配置）
+        run: dotnet build src\CastReceiver.App\CastReceiver.App.csproj -c Release -v minimal
+
+      # ARM64 原生构建（交叉编译）：x64 模拟下 Miracast/硬解行为不可预期，
+      # 所以至少保证"能出 ARM64 原生包"。真机行为仍需人工在 ARM64 设备上验证。
+      - name: 编译（Release / win-arm64 交叉）
+        run: dotnet build src\CastReceiver.App\CastReceiver.App.csproj -c Release -r win-arm64 -v minimal
+
+      # ⚠ 上一行会把 obj\project.assets.json 覆盖成"只有 win-arm64 目标"，
+      # 而下面几个自检（dotnet run 测试工程 → 间接构建 win-x64 的 App）需要 win-x64 目标，
+      # 否则报 NETSDK1047。**普通 `dotnet restore` 是增量的、不会重建该目标**，必须显式带 -r。
+      # （本地实测：漏掉这一步时，自检会以"生成失败"退出。）
+      - name: 还原回 win-x64（arm64 交叉构建会覆盖 assets，必须显式重新还原）
+        run: dotnet restore src\CastReceiver.App\CastReceiver.App.csproj -r win-x64
+
+      # 加密库用例组：不需要界面/网络/手机，秒级完成，失败时返回非 0
+      - name: 自检 · 加密库（账户/加解密/条目读写）
+        run: dotnet run --project tests\CastReceiver.SelfTest\CastReceiver.SelfTest.csproj -c Release -- --vault-only
+
+      # AirPlay 协议级用例组：同样不需要界面/手机
+      - name: 自检 · AirPlay 协议
+        run: dotnet run --project tests\CastReceiver.SelfTest\CastReceiver.SelfTest.csproj -c Release -- --airplay-only
+
+      # 安卓鼠标控制（⑧）的纯逻辑用例组：坐标映射/旋转/黑边判定/adb 输出解析，
+      # 不需要手机、不需要 adb 在线、不需要界面，毫秒级（本地实测 20/20 通过）
+      - name: 自检 · 安卓坐标与 adb 解析（纯逻辑）
+        run: dotnet run --project tests\CastReceiver.SelfTest\CastReceiver.SelfTest.csproj -c Release -- --android-only
+
+      # 发布产物里绝不能出现 GPL 的原生 libvlc（只有自检工程允许引用）
+      - name: 发布并检查产物（GPL 合规）
+        shell: pwsh
+        run: |
+          $out = "ci-publish"
+          dotnet publish src\CastReceiver.App\CastReceiver.App.csproj -c Release -r win-x64 `
+            --self-contained true -o $out
+          if ($LASTEXITCODE -ne 0) { throw "dotnet publish 失败" }
+          # 只挡原生 libvlc（GPL）；托管的 LibVLCSharp.dll 是 LGPL 绑定，本来就该在包里
+          $native = @('libvlc.dll','libvlccore.dll')
+          $bad = Get-ChildItem $out -Recurse -ErrorAction SilentlyContinue |
+                 Where-Object { $_.FullName -match '\\libvlc\\' -or ($native -contains $_.Name.ToLower()) }
+          if ($bad) {
+            Write-Host "发布包里出现原生 libvlc（GPL 组件，不得分发）：" -ForegroundColor Red
+            $bad | Select-Object -First 10 | ForEach-Object { Write-Host "  $($_.FullName)" }
+            throw "GPL 合规检查失败"
+          }
+          Write-Host "GPL 检查通过：发布包内无原生 libvlc"
+          if (Get-ChildItem $out -Recurse -Filter 'LibVLCSharp.dll' -ErrorAction SilentlyContinue) {
+            Write-Host "（包内含托管绑定 LibVLCSharp.dll，LGPL-2.1，属预期）"
+          }
+          $exe = Join-Path $out "投屏Window.exe"
+          if (-not (Test-Path $exe)) { throw "发布目录里没有主程序" }
+          Write-Host "主程序大小：$([math]::Round((Get-Item $exe).Length/1MB,2)) MB"
+
+      - name: 上传发布产物（便于人工核查）
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: publish-win-x64
+          path: ci-publish
+          retention-days: 7

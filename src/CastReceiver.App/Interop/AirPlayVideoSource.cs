@@ -1,3 +1,4 @@
+using CastReceiver.Core.AirPlay.Mirror;
 using Windows.Foundation;
 using Windows.Media.Core;
 using Windows.Media.MediaProperties;
@@ -24,7 +25,12 @@ internal sealed class AirPlayVideoSource : IDisposable
 
     private readonly object _gate = new();
     private readonly Queue<Sample> _queue = new();
-    private readonly int _capacity;
+
+    /// <summary>
+    /// 丢帧策略（在 Core 里，纯逻辑、有自检）：积压超限时不再零散丢最旧的帧，
+    /// 而是清空积压、等下一个 IDR 再起解 —— 否则参考链一断就是花屏/卡顿。
+    /// </summary>
+    private readonly MirrorFrameGate _frameGate;
 
     private MediaStreamSource? _streamSource;
     private MediaSource? _mediaSource;
@@ -43,7 +49,7 @@ internal sealed class AirPlayVideoSource : IDisposable
         {
             throw new ArgumentOutOfRangeException(nameof(capacity));
         }
-        _capacity = capacity;
+        _frameGate = new MirrorFrameGate(capacity);
 
         var properties = VideoEncodingProperties.CreateH264();
         properties.Width = (uint)Math.Max(1, width);
@@ -78,8 +84,23 @@ internal sealed class AirPlayVideoSource : IDisposable
     /// <summary>已推送的帧数。</summary>
     public long PushedCount { get; private set; }
 
-    /// <summary>因为解码跟不上而丢弃的帧数。</summary>
+    /// <summary>因为解码跟不上而丢弃的帧数（含"重同步时清空的积压"）。</summary>
     public long DroppedCount { get; private set; }
+
+    /// <summary>重同步次数：每次"积压超限 → 等关键帧重新起解"算一次。</summary>
+    public long ResyncCount { get; private set; }
+
+    /// <summary>当前是否在等关键帧（等的时候画面会停一下，界面据此如实说明）。</summary>
+    public bool WaitingForKeyFrame
+    {
+        get
+        {
+            lock (_gate)
+            {
+                return _frameGate.WaitingForKeyFrame;
+            }
+        }
+    }
 
     /// <summary>解码器已经取走的帧数。</summary>
     public long DeliveredCount { get; private set; }
@@ -113,6 +134,29 @@ internal sealed class AirPlayVideoSource : IDisposable
                 return;
             }
 
+            // 先问策略：这一帧收不收、要不要先清空积压。必须用**入队前**的积压数判断。
+            FrameDisposition disposition = _frameGate.Offer(annexB, _queue.Count, DateTime.UtcNow, out bool clearBacklog);
+            if (clearBacklog && _queue.Count > 0)
+            {
+                DroppedCount += _queue.Count;
+                _queue.Clear();
+            }
+
+            if (disposition is FrameDisposition.DropOverflow
+                             or FrameDisposition.DropWaitingKey
+                             or FrameDisposition.DropTimeoutProbe)
+            {
+                DroppedCount++;
+                // 关键：这里**不要**去兑现挂起的请求。我们正在等关键帧，
+                // 把一个参考链残缺的帧交给解码器只会换来花屏/卡顿（就是用户报的那个现象）。
+                return;
+            }
+
+            if (disposition == FrameDisposition.AcceptAfterResync)
+            {
+                ResyncCount++;
+            }
+
             TimeSpan timestamp = Rebase(remoteTimestamp);
             TimeSpan duration = DefaultDuration;
             if (_hasBase && timestamp > _lastTimestamp)
@@ -128,13 +172,6 @@ internal sealed class AirPlayVideoSource : IDisposable
             _queue.Enqueue(new Sample(annexB, timestamp, duration));
             _lastTimestamp = timestamp;
             PushedCount++;
-
-            // 直播优先"跟得上"：积压过多就丢最旧的
-            while (_queue.Count > _capacity)
-            {
-                _queue.Dequeue();
-                DroppedCount++;
-            }
 
             TryFulfillPendingRequest();
         }
@@ -281,6 +318,7 @@ internal sealed class AirPlayVideoSource : IDisposable
         {
             _queue.Clear();
             _hasBase = false;
+            _frameGate.Reset();
         }
     }
 

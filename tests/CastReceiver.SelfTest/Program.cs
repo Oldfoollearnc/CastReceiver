@@ -62,7 +62,7 @@ internal static class Program
             return apBad;
         }
 
-        // 只跑安卓鼠标控制（⑧）的纯逻辑用例组（不需要手机/adb 在线，毫秒级完成）
+        // 只跑「电脑控制手机」（安卓 · adb）的纯逻辑用例组（不需要手机/adb 在线，毫秒级完成）
         // 可选 --adb-endpoint <host:port>：额外跑一次"自动发现 → 自动连接"的真实连接
         if (args.Any(a => a.Equals("--android-only", StringComparison.OrdinalIgnoreCase)))
         {
@@ -76,7 +76,7 @@ internal static class Program
                 Console.WriteLine($"        {item.Detail}");
             }
             int adbBad = androidItems.Count(i => i.Outcome == SelfTestOutcome.Failed);
-            Console.WriteLine($"\n安卓鼠标控制（⑧）用例：{androidItems.Count} 项，失败 {adbBad} 项");
+            Console.WriteLine($"\n电脑控制手机（安卓 · adb）用例：{androidItems.Count} 项，失败 {adbBad} 项");
             return adbBad;
         }
 

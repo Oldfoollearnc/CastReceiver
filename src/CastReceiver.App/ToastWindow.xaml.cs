@@ -34,6 +34,7 @@ public partial class ToastWindow : Window
             BeginAnimation(OpacityProperty,
                 new System.Windows.Media.Animation.DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(180)));
             _timer.Start();
+            Announce();
         };
         Closed += (_, _) => _timer.Stop();
     }
@@ -78,6 +79,22 @@ public partial class ToastWindow : Window
     {
         try { _action?.Invoke(); } catch { }
         Dismiss();
+    }
+
+    /// <summary>
+    /// 让读屏把这条提示念出来。
+    /// 只设 AutomationProperties.LiveSetting 是不够的：WPF 不会自己抛 LiveRegionChanged，
+    /// 必须手动抛一次，否则读屏永远收不到这个区域的变化（提示条等于对读屏用户不存在）。
+    /// </summary>
+    private void Announce()
+    {
+        try
+        {
+            var peer = System.Windows.Automation.Peers.UIElementAutomationPeer.CreatePeerForElement(TxtTitle)
+                       ?? new System.Windows.Automation.Peers.TextBlockAutomationPeer(TxtTitle);
+            peer.RaiseAutomationEvent(System.Windows.Automation.Peers.AutomationEvents.LiveRegionChanged);
+        }
+        catch { }
     }
 
     public void Dismiss()

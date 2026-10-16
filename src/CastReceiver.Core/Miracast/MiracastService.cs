@@ -7,6 +7,12 @@ namespace CastReceiver.Core.Miracast;
 
 public sealed record MiracastStartResult(bool Success, string Message, string Detail);
 
+/// <summary>
+/// 改设备名的结果。<c>Applied=false</c> 表示"已经记下，但要等条件满足才真正生效"
+/// （例如正在投屏时不能重建广播，否则会打断用户）。
+/// </summary>
+public sealed record DeviceNameApplyResult(bool Applied, string Message);
+
 public sealed record MiracastStatus(
     bool Listening,
     string ListeningStatus,
@@ -101,10 +107,28 @@ public sealed class MiracastService : IDisposable
     private int _staleStreak;
     private bool _lastRequireConfirm = true;
 
+    /// <summary>正在应用新设备名（重建广播）：防止设置界面的连续输入与看门狗重启互相踩。</summary>
+    private bool _applyingName;
+
     /// <summary>当前实际使用的视频流参数（供界面显示）。</summary>
     public string StreamInfo { get; private set; } = "未知";
     public string DeviceName { get; private set; } = "";
+
+    /// <summary>
+    /// 宿主写入的"当前想要的设备名"（设置里改了名字就写这里）。
+    ///
+    /// 为什么必须单独有它：<see cref="DeviceName"/> 是**上一次 StartAsync 的快照**，
+    /// 而空闲刷新 / 看门狗自动恢复 / 手动「刷新广播」这些内部重启都要重新应用一次名字 ——
+    /// 早先它们读的就是那个快照，于是"在设置里改了名"会被这些重启**悄悄改回旧名字**
+    /// （现象：改完名字再点「刷新广播」，手机上还是旧名字；放着不管十分钟后也被改回去）。
+    /// </summary>
+    public string DesiredDeviceName { get; set; } = "";
+
     public int ConnectionCount => _connectionCount;
+
+    /// <summary>这次重启真正要用的名字：以宿主写入的"想要的"为准，没写过才退回上次的快照。</summary>
+    private string EffectiveDeviceName()
+        => string.IsNullOrWhiteSpace(DesiredDeviceName) ? DeviceName : DesiredDeviceName.Trim();
 
     /// <summary>本机 Miracast 硬件/驱动能力（MiracastSupported 表示可用）。结果会被缓存。</summary>
     public string QueryWifiStatus()
@@ -243,7 +267,15 @@ public sealed class MiracastService : IDisposable
             }
 
             var current = await WithTimeoutAsync(_receiver.GetCurrentSettingsAsync().AsTask(ct), 10, "读取接收端设置").ConfigureAwait(false);
-            DeviceName = current.FriendlyName;
+            // 读回校验：平台可能不接受这个名字（长度/字符限制等）。早先这里直接采信读回值，
+            // 而上面已经打过"设备名已设为…"，于是"改了名字但手机上没变"完全无从判断。
+            string actual = string.IsNullOrWhiteSpace(current.FriendlyName) ? deviceName : current.FriendlyName.Trim();
+            if (!string.Equals(actual, deviceName, StringComparison.Ordinal))
+            {
+                _log.Warn("miracast", $"系统未接受设备名“{deviceName}”，实际使用“{actual}”");
+                Notice?.Invoke($"系统未接受设备名“{deviceName}”，实际为“{actual}”");
+            }
+            DeviceName = actual;
 
             _session = await WithTimeoutAsync(_receiver.CreateSessionAsync(null).AsTask(ct), 15, "创建接收会话").ConfigureAwait(false);
             if (_session is null)
@@ -447,7 +479,7 @@ public sealed class MiracastService : IDisposable
                 {
                     // 空闲刷新：不打扰用户，只记日志
                     _log.Info("miracast", $"空闲超过 {IdleBroadcastRefreshMinutes} 分钟，自动重建广播以保持可被发现");
-                    var idleName = DeviceName;
+                    var idleName = EffectiveDeviceName();
                     _wantListening = false;
                     try { if (_session is not null) _session.Dispose(); } catch { }
                     _session = null;
@@ -474,7 +506,7 @@ public sealed class MiracastService : IDisposable
                 _log.Warn("miracast", $"{why}，第 {recoveries} 次自动恢复");
                 Notice?.Invoke(noMedia ? "已连接但没收到画面，正在重建接收端…" : "接收端无响应，正在自动恢复…");
 
-                var name = DeviceName;
+                var name = EffectiveDeviceName();
                 _wantListening = false;
                 try { if (_session is not null) _session.Dispose(); } catch { }
                 _session = null;
@@ -544,10 +576,17 @@ public sealed class MiracastService : IDisposable
     /// 手动刷新广播：重建接收会话（手机搜不到设备时用，等价于"重启程序"的那一下）。
     /// 有设备连着时不动，避免打断投屏。
     /// </summary>
-    public async Task<bool> RefreshBroadcastAsync()
+    /// <param name="deviceName">
+    /// 这次广播要用的名字。**界面上的「刷新广播」必须把设置里的当前名字传进来** ——
+    /// 早先这里读的是 <see cref="DeviceName"/> 快照，于是改完名字点刷新仍然是旧名字。
+    /// </param>
+    public async Task<bool> RefreshBroadcastAsync(string? deviceName = null)
     {
         if (_connectionCount > 0) return false;
-        var name = DeviceName;
+        string name = string.IsNullOrWhiteSpace(deviceName) ? EffectiveDeviceName() : deviceName.Trim();
+        if (name.Length == 0) return false;
+        DesiredDeviceName = name;
+        DeviceName = name;      // 界面立刻显示新名字，不等这次重建跑完
         var confirm = _lastRequireConfirm;
         Notice?.Invoke("正在刷新接收广播…");
         await StopAsync().ConfigureAwait(false);
@@ -555,6 +594,55 @@ public sealed class MiracastService : IDisposable
         var result = await StartAsync(name, confirm).ConfigureAwait(false);
         Notice?.Invoke(result.Success ? "接收广播已刷新，手机上重新搜索本机即可" : "刷新失败：" + result.Message);
         return result.Success;
+    }
+
+    /// <summary>
+    /// 应用新的设备名（设置里改完名字后由宿主调用）。
+    ///
+    /// 三种情况：
+    /// <list type="bullet">
+    /// <item>没在监听：记下来，下次开启接收端时生效；</item>
+    /// <item>有设备正在投屏：**不重建广播**（那会把用户的投屏打断），只记下新名字，
+    /// 断开后的下一次重启（空闲刷新/看门狗）会自动用上它；</item>
+    /// <item>空闲：立刻重建广播，手机上重新搜索即可看到新名字。</item>
+    /// </list>
+    /// </summary>
+    public async Task<DeviceNameApplyResult> ApplyDeviceNameAsync(string deviceName)
+    {
+        string name = (deviceName ?? "").Trim();
+        if (name.Length == 0)
+        {
+            return new DeviceNameApplyResult(false, "设备名不能为空，已保持原来的名字");
+        }
+
+        DesiredDeviceName = name;
+        DeviceName = name;
+
+        if (!IsListening)
+        {
+            return new DeviceNameApplyResult(true, "设备名已保存，下次开启接收端时生效");
+        }
+        if (_connectionCount > 0)
+        {
+            return new DeviceNameApplyResult(false, "已有设备正在投屏：设备名将在断开后自动生效");
+        }
+        if (_applyingName)
+        {
+            return new DeviceNameApplyResult(false, "正在应用上一个设备名，请稍候");
+        }
+
+        _applyingName = true;
+        try
+        {
+            bool ok = await RefreshBroadcastAsync(name).ConfigureAwait(false);
+            return ok
+                ? new DeviceNameApplyResult(true, $"设备名已生效（已按“{name}”重新广播）")
+                : new DeviceNameApplyResult(false, "重新广播失败，可在主界面点「刷新广播」重试");
+        }
+        finally
+        {
+            _applyingName = false;
+        }
     }
 
     private void OnConnectionCreated(MiracastReceiverSession sender, MiracastReceiverConnectionCreatedEventArgs args)

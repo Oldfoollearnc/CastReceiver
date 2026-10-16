@@ -34,12 +34,13 @@ internal static class Program
                 CastSettings.RootOverride = args[i + 1];
             if (args[i].Equals("--instance-suffix", StringComparison.OrdinalIgnoreCase) && args[i + 1].Length > 0)
                 App.InstanceSuffix = args[i + 1];
-            /* ⑧ 已停用：自检用的「mDNS 发现结果」注入口子（恢复 ⑧ 时一起恢复）
-            // 用途：模拟器广播的是它自己的 NAT 地址（宿主机连不上），
-            // 于是"只打开开关就自动连上"这条链路在模拟器上没法端到端验；这个口子让它可以验。
+            // 自检用：把「mDNS 发现结果」换成文件内容（不设则走真实的 adb mdns services）。
+            // 用途：真机上"发现 → 连接"整条链路没法在无人值守的自检里跑，这个口子让它能跑。
             if (args[i].Equals("--adb-discovery", StringComparison.OrdinalIgnoreCase) && args[i + 1].Length > 0)
                 App.AdbDiscoveryFile = args[i + 1];
-            */
+            // 自检用：adb 可执行文件路径（指到一个桩程序上，就能在没有真机时端到端验"命令发对了没有"）
+            if (args[i].Equals("--adb-path", StringComparison.OrdinalIgnoreCase) && args[i + 1].Length > 0)
+                CastReceiver.Core.Android.AdbClient.PathOverride = args[i + 1];
         }
 
         Bootstrap.Log("Main 入口");

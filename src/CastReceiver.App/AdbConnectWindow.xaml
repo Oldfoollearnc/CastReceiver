@@ -2,7 +2,7 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
-        Title="鼠标控制（安卓）" Height="640" Width="560"
+        Title="电脑控制手机 · 无线连接" Height="660" Width="560"
         Background="{DynamicResource B.Bg}" Foreground="{DynamicResource B.Text}"
         FontFamily="{DynamicResource F.Ui}" WindowStartupLocation="CenterOwner"
         WindowStyle="None" ResizeMode="NoResize" UseLayoutRounding="True" ShowInTaskbar="False">
@@ -21,7 +21,7 @@
             </Grid.RowDefinitions>
 
             <Grid Grid.Row="0">
-                <TextBlock Text="用鼠标控制手机（安卓 · 无线调试）" Style="{DynamicResource S.H1}"
+                <TextBlock Text="电脑控制手机（安卓 · 无线调试）" Style="{DynamicResource S.H1}"
                            Margin="20,0,0,0" VerticalAlignment="Center" />
                 <Button Content="&#xE8BB;" Style="{DynamicResource S.BtnClose}" HorizontalAlignment="Right" Margin="0,0,8,0"
                         Click="BtnClose_Click" shell:WindowChrome.IsHitTestVisibleInChrome="True"
@@ -47,21 +47,21 @@
                 </Border>
 
                 <TextBlock FontSize="11.5" Foreground="{DynamicResource B.TextDim}" TextWrapping="Wrap" Margin="0,14,0,0" LineHeight="18"
-                           Text="平时不用填：手机打开「开发者选项 → 无线调试」，程序会自动发现并连上。第一次在新手机上用时，点手机的「使用配对码配对设备」，把 6 位配对码填到下面（需要 Android 11+）。" />
+                           Text="无线控制：手机打开「设置 → 开发者选项 → 无线调试」（需要 Android 11 及以上），程序会自动发现并连上，不用填地址。&#10;第一次在一台新手机上用时，点手机上的「使用配对码配对设备」，把 6 位配对码填到下面即可（IP 与端口会自动填好）；配对过一次以后就是「打开开关即连上」。" />
 
                 <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
                     <Button x:Name="BtnAuto" Content="自动发现并连接" Style="{DynamicResource S.BtnPrimary}" Padding="16,7"
                             FontSize="12" Click="BtnAuto_Click" AutomationProperties.Name="自动发现并连接"
                             AutomationProperties.AutomationId="AdbAutoButton" />
                     <Button x:Name="BtnDiscover" Content="刷新发现" Style="{DynamicResource S.Btn}" Padding="12,7"
-                            FontSize="12" Margin="10,0,0,0" Click="BtnDiscover_Click" AutomationProperties.Name="自动发现同网段手机"
+                            FontSize="12" Margin="10,0,0,0" Click="BtnDiscover_Click" AutomationProperties.Name="刷新发现（自动发现同网段手机）"
                             AutomationProperties.AutomationId="AdbDiscoverButton" />
                     <Button x:Name="BtnDisconnect" Content="断开" Style="{DynamicResource S.Btn}" Padding="12,7"
                             FontSize="12" Margin="10,0,0,0" Click="BtnDisconnect_Click" AutomationProperties.Name="断开"
                             AutomationProperties.AutomationId="AdbDisconnectButton" />
                 </StackPanel>
 
-                <TextBlock Text="首次配对" FontSize="11.5" Foreground="{DynamicResource B.TextFaint}" Margin="0,14,0,0" />
+                <TextBlock x:Name="TxtInputHint" FontSize="11.5" Foreground="{DynamicResource B.TextFaint}" Margin="0,14,0,0" Text="首次配对" />
 
                 <Grid Margin="0,8,0,0">
                     <Grid.ColumnDefinitions>

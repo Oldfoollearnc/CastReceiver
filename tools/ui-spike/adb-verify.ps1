@@ -1,4 +1,4 @@
-# ⚠ ⑧「安卓 adb 无线鼠标控制」目前已按用户要求停用（界面卡片折叠、代码注释保留），
+﻿# ⚠ ⑧「安卓 adb 无线鼠标控制」目前已按用户要求停用（界面卡片折叠、代码注释保留），
 #   所以本脚本现在**跑不过**（B/C/D 段依赖界面上的鼠标控制卡片）。等 ⑧ 恢复后再跑，它是 ⑧ 的验证证据。
 # 安卓 adb 鼠标控制（⑧）验证脚本（开发期用，不参与产品构建）
 #
@@ -237,7 +237,7 @@ New-Item -ItemType Directory -Force -Path $SettingsRoot | Out-Null
     DeviceName = 'PC'; AntiCapture = $false; AutoStartAirPlay = $false; AutoStartMiracast = $false
     AutoStartDlna = $false; HasSeenTutorial = $true; MiniOnMinimize = $false; MiniPinned = $false
     ShowStats = $false; AutoFullscreen = $false; NotifyOnConnect = $false; GlobalHotkeys = $false
-    AdbMouseControl = $true; AdbAutoConnect = $true; AdbHost = '127.0.0.1'; AdbConnectPort = "$TcpPort"
+    AdbControlEnabled = $true; AdbMouseControl = $true; AdbAutoConnect = $true; AdbHost = '127.0.0.1'; AdbConnectPort = "$TcpPort"
 } | ConvertTo-Json | Set-Content (Join-Path $SettingsRoot 'settings.json') -Encoding UTF8
 
 $proc = Start-Process -FilePath $Exe -ArgumentList '--demo-cast', '--settings-root', $SettingsRoot -PassThru
@@ -389,7 +389,7 @@ New-Item -ItemType Directory -Force -Path $settingsC | Out-Null
     DeviceName = 'PC'; AntiCapture = $false; AutoStartAirPlay = $false; AutoStartMiracast = $false
     HasSeenTutorial = $true; MiniOnMinimize = $false; ShowStats = $false; AutoFullscreen = $false
     NotifyOnConnect = $false; GlobalHotkeys = $false
-    AdbMouseControl = $true; AdbAutoConnect = $true
+    AdbControlEnabled = $true; AdbMouseControl = $true; AdbAutoConnect = $true
     AdbHost = ''; AdbConnectPort = ''; AdbPairPort = ''      # 注意：一个地址都不填
 } | ConvertTo-Json | Set-Content (Join-Path $settingsC 'settings.json') -Encoding UTF8
 
@@ -454,7 +454,7 @@ New-Item -ItemType Directory -Force -Path $settingsD | Out-Null
     DeviceName = 'PC'; AntiCapture = $false; AutoStartAirPlay = $false; AutoStartMiracast = $false
     HasSeenTutorial = $true; MiniOnMinimize = $false; ShowStats = $false; AutoFullscreen = $false
     NotifyOnConnect = $false; GlobalHotkeys = $false
-    AdbMouseControl = $true; AdbAutoConnect = $true; AdbHost = ''; AdbConnectPort = ''
+    AdbControlEnabled = $true; AdbMouseControl = $true; AdbAutoConnect = $true; AdbHost = ''; AdbConnectPort = ''
 } | ConvertTo-Json | Set-Content (Join-Path $settingsD 'settings.json') -Encoding UTF8
 
 $procD = Start-Process -FilePath $Exe -ArgumentList '--demo-cast', '--settings-root', $settingsD,

@@ -20,12 +20,10 @@ public sealed record SelfTestItem(string Group, string Name, SelfTestOutcome Out
         _ => "失败",
     };
 
-    public string Color => Outcome switch
-    {
-        SelfTestOutcome.Passed => "#4ADE80",
-        SelfTestOutcome.Warning => "#FBBF24",
-        _ => "#F87171",
-    };
+    // 这里原先还有个 Color 属性（硬编码 #4ADE80/#FBBF24/#F87171）。问题在于：
+    //   · 那套颜色是给深色主题调的，浅色主题下对白底只有 1.74/1.66/2.76:1，远低于 AA；
+    //   · Core 这一层也不该知道主题。
+    // 现在由界面上按 Outcome 触发主题令牌（B.Ok / B.Warn / B.Bad），两套主题自动达标。
 }
 
 /// <summary>
@@ -323,8 +321,18 @@ public sealed class SelfTestRunner
         }
 
         // ---------------------------------------------------------- H 播放内核
-        Add("H 播放内核", "LibVLC 可用", _player is VlcPlayerEngine,
-            _player is VlcPlayerEngine v ? $"已初始化（音量 {v.Volume}）" : "播放内核未就绪");
+        // 产品本身**不内置播放内核**（DLNA 播放已整体移除，发布包里连托管的 LibVLCSharp 都不带），
+        // 所以 App 里跑这份自检时 player 恒为 null —— 那是"不适用"，报成「失败」是在虚报故障。
+        if (_player is null)
+        {
+            Add("H 播放内核", "播放内核", SelfTestOutcome.Warning,
+                "本产品不内置播放内核（只有自检工具会跑这一项），属于预期，不影响投屏");
+        }
+        else
+        {
+            Add("H 播放内核", "LibVLC 可用", _player is IPlaybackDiagnostics,
+                _player is IPlaybackDiagnostics v ? $"已初始化（音量 {v.Volume}）" : "播放内核未就绪");
+        }
 
         (bool decodeOk, string decodeDetail) = await ProbeDecodeAsync(ct).ConfigureAwait(false);
         Add("H 播放内核", "能解码并输出视频帧", decodeOk, decodeDetail);
@@ -755,7 +763,7 @@ public sealed class SelfTestRunner
             while (DateTime.UtcNow < deadline)
             {
                 samples.Add($"{_player.Position.TotalSeconds:F1}");
-                if (_player is VlcPlayerEngine vt && ++tick % 3 == 1)
+                if (_player is IPlaybackDiagnostics vt && ++tick % 3 == 1)
                     _log.Info("selftest", $"{title} 遥测 #{tick}: pos={_player.Position.TotalSeconds:F1}s dur={_player.Duration.TotalSeconds:F1}s {vt.RawTelemetry}");
                 if (_player.Position > TimeSpan.FromSeconds(1.5)) break;
                 await Task.Delay(700, ct).ConfigureAwait(false);
@@ -764,7 +772,7 @@ public sealed class SelfTestRunner
             await Task.Delay(400, ct).ConfigureAwait(false);
 
             bool advanced = samples.Any(s => double.TryParse(s, out double v) && v > 1.0);
-            string telemetry = _player is VlcPlayerEngine vp ? vp.RawTelemetry : "";
+            string telemetry = _player is IPlaybackDiagnostics vp ? vp.RawTelemetry : "";
             string err = _player.LastError is null ? "" : $" 错误={_player.LastError}";
             return (advanced,
                 advanced ? $"进度推进正常（采样 {string.Join("→", samples.Take(8))} 秒）"
