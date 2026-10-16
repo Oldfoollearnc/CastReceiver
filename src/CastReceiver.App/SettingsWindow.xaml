@@ -353,6 +353,20 @@
                                     <ToggleButton x:Name="SwStatsAuto" Style="{DynamicResource S.Switch}" Checked="Setting_Changed" Unchecked="Setting_Changed" HorizontalAlignment="Right" VerticalAlignment="Center"
                                                   AutomationProperties.Name="只在卡顿时显示状态浮层" />
                                 </Grid>
+
+                                <!-- 小窗：主窗口最小化后是否自动弹出画面小窗。
+                                     这个开关以前**只有设置项、界面上没有入口**（MiniOnMinimize 默认 true），
+                                     于是"最小化就弹小窗"既关不掉、也说不清去哪儿关 —— 只能退程序。 -->
+                                <TextBlock Text="小窗" Style="{DynamicResource S.H2}" Margin="0,24,0,0" />
+                                <Grid Margin="0,12,0,0">
+                                    <StackPanel>
+                                        <TextBlock Text="主窗口最小化时自动显示小窗" FontSize="13" />
+                                        <TextBlock Text="关掉后最小化不再自动弹小窗；需要时点悬浮控制条上的「小窗」随时打开"
+                                                   Style="{DynamicResource S.Desc}" Margin="0,2,0,0" />
+                                    </StackPanel>
+                                    <ToggleButton x:Name="SwMiniOnMinimize" Style="{DynamicResource S.Switch}" Checked="Setting_Changed" Unchecked="Setting_Changed" HorizontalAlignment="Right" VerticalAlignment="Center"
+                                                  AutomationProperties.Name="最小化时自动显示小窗" />
+                                </Grid>
                             </StackPanel>
                         </ScrollViewer>
 

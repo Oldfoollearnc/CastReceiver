@@ -1,4 +1,4 @@
-# 投屏Window 桌面版 · v2.1.0
+# 投屏Window 桌面版 · v2.1.1
 
 把 Windows 电脑变成**手机镜像接收端**（Miracast / Wi-Fi Display，另支持 AirPlay 接收）。
 手机和电脑连同一个 Wi-Fi，用手机自带的「无线投屏 / 投射屏幕」就能把画面镜像到电脑上。
@@ -36,7 +36,7 @@
 ## 安装与使用
 
 1. **下载安装**：到 [Releases](https://github.com/Oldfoollearnc/CastReceiver/releases/latest) 下载
-   `CastReceiver-Setup-2.1.0.exe`，双击 → 下一步 → 完成。
+   `CastReceiver-Setup-2.1.1.exe`，双击 → 下一步 → 完成。
 2. **放行一次**：启动后如果顶部显示黄色的「还差一步：点『一键准备』」，点它并在 UAC 弹窗里同意一次
    （放行防火墙 + 允许被手机发现，**只需一次**）。
 3. **开始镜像**：手机下拉快捷面板 →「无线投屏 / 投射屏幕」→ 在设备列表里选本机名称。

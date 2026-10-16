@@ -4,6 +4,7 @@ using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
+using System.Windows.Threading;
 using CastReceiver.App.Interop;
 
 namespace CastReceiver.App;
@@ -117,6 +118,18 @@ public partial class MiniWindow : Window
     public void SetStateText(string text) => TxtState.Text = text;
 
     /// <summary>
+    /// 告诉小窗自己是「因主窗口最小化自动弹出」还是「用户手动打开（画中画）」。
+    /// 自动弹出的那种，点关闭会顺带关掉「最小化时自动显示小窗」，
+    /// 所以提示语要先把这件事讲清楚 —— 否则用户点完不知道为什么以后就不弹了。
+    /// </summary>
+    public void SetAutoShown(bool auto)
+    {
+        BtnClose.ToolTip = auto
+            ? "关闭小窗（以后最小化时不再自动弹出）"
+            : "关闭小窗";
+    }
+
+    /// <summary>
     /// 多设备时显示「切换设备」按钮，并把当前是第几路写进提示。
     /// 只有一路时按钮收起 —— 没得切换却摆个按钮，会让人以为点了没反应。
     /// </summary>
@@ -156,6 +169,21 @@ public partial class MiniWindow : Window
         });
 
         Pinned = _pinned;
+
+        // 控制条平时是"鼠标移进来才浮出"，于是「关闭小窗」这个按钮用户根本发现不了
+        // （反馈原话：找不到怎么关，只能退程序）。所以刚出现时先自动亮 3 秒再淡出；
+        // 鼠标要是已经停在窗口上就不收，交给 MouseLeave 自己收。
+        AnimateStrip(true);
+        var reveal = new DispatcherTimer { Interval = TimeSpan.FromSeconds(3) };
+        reveal.Tick += (_, _) =>
+        {
+            reveal.Stop();
+            if (!IsMouseOver)
+            {
+                AnimateStrip(false);
+            }
+        };
+        reveal.Start();
     }
 
     /// <summary>带缓动淡出，结束后再真正关闭（由主窗口调用）。</summary>

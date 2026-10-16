@@ -42,10 +42,11 @@
 
             <Border Width="1" Height="20" Background="{DynamicResource B.MediaLine}" Margin="10,0" />
 
-            <!-- 小窗：主窗口最小化时自动出现；这里也可以随时手动开关（画中画） -->
+            <!-- 小窗：这里是"手动打开"的入口（画中画，不受设置影响）。
+                 "主窗口最小化时是否自动出现"由 设置 → 画面 的开关决定。 -->
             <Button x:Name="BtnMini" Style="{StaticResource S.BtnIconMedia}" Content="&#xE7C4;" Width="34"
                     AutomationProperties.Name="小窗" Click="BtnMini_Click"
-                    ToolTip="小窗显示画面（最小化时自动出现）" />
+                    ToolTip="小窗显示画面（画中画；最小化时是否自动弹出见 设置 → 画面）" />
         </StackPanel>
     </Border>
 </Window>

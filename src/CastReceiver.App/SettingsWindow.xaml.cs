@@ -57,6 +57,7 @@ public partial class SettingsWindow : Window
         _ = LoadAudioEndpointsAsync(s);   // 枚举播放设备是异步的，先让窗口显示出来
         SwStats.IsChecked = s.ShowStats;
         SwStatsAuto.IsChecked = s.StatsOnlyWhenLagging;
+        SwMiniOnMinimize.IsChecked = s.MiniOnMinimize;
         SwIntro.IsChecked = s.ShowIntro;
         InitIntroVideoSection(s);
         SldZoom.Value = Math.Clamp(s.MirrorZoom * 100, 50, 200);
@@ -1552,6 +1553,7 @@ public partial class SettingsWindow : Window
         }
         s.ShowStats = SwStats.IsChecked == true;
         s.StatsOnlyWhenLagging = SwStatsAuto.IsChecked == true;
+        s.MiniOnMinimize = SwMiniOnMinimize.IsChecked == true;
         s.ShowIntro = SwIntro.IsChecked == true;
         SaveIntroSelection();
         s.MirrorZoom = SldZoom.Value / 100.0;

@@ -4275,6 +4275,7 @@ public partial class MainWindow : Window
         }
 
         _miniAuto = auto;
+        _mini?.SetAutoShown(auto);
 
         // 顺序很重要：必须先 Show，窗口的 BuildWindowCore 才会跑出合成器，
         // 之后 MirrorFrom 才有地方挂画面。反过来做会静默失败 —— 小窗出来是一片黑。
@@ -4334,15 +4335,29 @@ public partial class MainWindow : Window
 
         window.Dismissed += () => Dispatcher.BeginInvoke(() =>
         {
+            // 自动弹出的小窗被用户关掉 = 「我不想最小化就弹小窗」。
+            // 以前这里只隐藏小窗、不动设置，于是下次一最小化它又弹回来 ——
+            // 用户唯一的出路是退出程序。现在把这份意愿记进设置（设置 → 画面 里有同名开关）。
+            bool wasAuto = _miniAuto;
+            bool closedWhileMinimized = WindowState == WindowState.Minimized;
             _miniAuto = false;
             HideMiniWindow();
-            // 主窗口正处于最小化时关掉小窗 = 画面无处显示，直接把主窗口叫回来
-            if (WindowState == WindowState.Minimized)
+
+            // 判据用「自动弹出的」或「主窗口正最小化时关掉的」两者之一：
+            // 后者是为了不依赖 _miniAuto 的时序（只要你在最小化状态下把小窗关掉，
+            // 意思就很明确：最小化时不要给我弹小窗）。
+            if ((wasAuto || closedWhileMinimized) && _host.Settings.MiniOnMinimize)
             {
-                Show();
-                WindowState = WindowState.Normal;
-                Activate();
+                _host.Settings.MiniOnMinimize = false;
+                _host.Settings.Save();
+                // 此刻主窗口通常正最小化：提示条是按主窗口坐标摆的，这时会摆到屏幕外看不见，
+                // 所以这里走托盘气泡（最小化时也看得见）。
+                _tray?.Balloon("已关闭「最小化时自动显示小窗」",
+                    "以后最小化主窗口不再自动弹小窗。需要时点悬浮控制条上的「小窗」，或在 设置 → 画面 里重新打开。");
             }
+
+            // 不再强制把主窗口叫回来：最小化是用户自己的选择，关小窗就只是关小窗。
+            // （主窗口最小化时仍可从任务栏或托盘图标恢复。）
         });
 
         window.PinChanged += pinned =>
