@@ -116,6 +116,16 @@ public partial class MainWindow : Window
     private TimeSpan _lastTick;
     private bool _busyShown = true;
 
+    /// <summary>窗口入场动效只播一次（重连/重绘不该重播）。</summary>
+    private bool _entrancePlayed;
+
+    /// <summary>右侧卡片当前显示的是"上手引导"还是"本次投屏"（用来做交叉淡入，而不是每秒重播）。</summary>
+    private bool? _lastSessionUi;
+
+    /// <summary>待机引导正在做"连接收尾"淡出；以及用于取消过期的淡出回调。</summary>
+    private bool _guideExiting;
+    private int _guideEpoch;
+
     [DllImport("user32.dll")] private static extern bool GetCursorPos(out POINT p);
     [StructLayout(LayoutKind.Sequential)] private struct POINT { public int X, Y; }
 
@@ -198,6 +208,8 @@ public partial class MainWindow : Window
         PreviewMouseLeftButtonDown += OnStagePointerDown;
         PreviewMouseLeftButtonUp += OnStagePointerUp;
         PreviewMouseWheel += OnStagePointerWheel;
+        PreviewMouseMove += OnStageMouseMove;
+        MouseLeave += (_, _) => { try { GuideModel.ResetPointer(); } catch { } };
         // 键盘直通：键也一样在窗口级接（只把"能翻译成手机输入"的键吃掉，其它键照旧给界面）
         PreviewKeyDown += OnStageKeyDown;
 
@@ -283,6 +295,14 @@ public partial class MainWindow : Window
         PreviewKeyDown += OnPreviewKeyDown;
         Loaded += OnLoaded;
         Closing += OnClosing;
+
+        // 底栏显示真实版本号（版本唯一来源是 Directory.Build.props，别在这里写死）
+        try
+        {
+            Version? version = typeof(MainWindow).Assembly.GetName().Version;
+            TxtVersion.Text = version is null ? "v2.1.1" : $"v{version.Major}.{version.Minor}.{version.Build}";
+        }
+        catch { }
     }
 
     // ------------------------------------------------------------------ 初始化
@@ -515,6 +535,13 @@ public partial class MainWindow : Window
             _ = AutoStartPhoneControlAsync();
         }
         catch (Exception ex) { _host.Log.Warn("demo", "演示模式启动失败：" + ex.Message); }
+    }
+
+    private async Task StartDemoCastAfterAsync(int delayMs)
+    {
+        await Task.Delay(Math.Clamp(delayMs, 100, 60_000));
+        if (_closing) return;
+        StartDemoCast();
     }
 
     /// <summary>抓屏前确认投屏窗口在最前（避免把压在上面的别的窗口拍进去）。</summary>
@@ -861,10 +888,14 @@ public partial class MainWindow : Window
         _fillMode = _fit == Interop.CompositionVideoHost.VideoFit.Fill;
         _zoom = Math.Clamp(s.MirrorZoom, 0.5, 2.0);
         BtnLatency.Content = s.LowLatency ? "延迟优先" : "画质优先";
+        // 顶栏的本机名与手机投屏列表里看到的名字保持同一个来源
+        string deviceName = string.IsNullOrWhiteSpace(s.DeviceName) ? "本机" : s.DeviceName.Trim();
+        TxtHeaderDevice.Text = $"本机 · {deviceName}";
+        UpdateStageChrome();
         ApplyVolumeToHosts();
         // 底栏只在窗口模式可见（全屏时 StatusBarRow 被折叠），所以这里提示 F11 进入全屏即可；
         // 原先写的「Esc 退出全屏」在窗口模式下按了没有反应，属于误导。
-        TxtHint.Text = "F11 进入全屏";
+        TxtHint.Text = "F11 进入全屏 · Ctrl+Alt+P 遮挡";
     }
 
     private void HookHostEvents()
@@ -1046,11 +1077,19 @@ public partial class MainWindow : Window
         RefreshUi();
         await Task.Delay(160);
         HideBusy();
+        PlayEntrance();            // 遮罩淡出的同时，界面内容错峰入场
         ShowBar();                 // 控制条在窗口模式下也常驻（浮在画面底部）
         PositionBar();
         FinishIntroWhenReady();    // 程序准备好了：动画放完就收场（没放完就等它）
         await PollMirrorStatusAsync();
-        if (App.DemoCast) StartDemoCast();     // 演示模式：无手机也能验证截屏/录制
+        if (App.DemoCast)
+        {
+            // 诊断用：CAST_DEMO_AFTER_MS=5000 可把演示投屏推迟 5 秒，
+            // 方便在"已经稳定显示待机页"之后再观察连接动效（不影响正常启动）。
+            int delay = int.TryParse(Environment.GetEnvironmentVariable("CAST_DEMO_AFTER_MS"), out int ms) ? ms : 0;
+            if (delay > 0) _ = StartDemoCastAfterAsync(delay);
+            else StartDemoCast();     // 演示模式：无手机也能验证截屏/录制
+        }
         RefreshAdbUi();
         // 「电脑控制手机」默认下线：启动时也不去碰 adb（不连、不预热）
         if (AdbEnabled)
@@ -1639,9 +1678,10 @@ public partial class MainWindow : Window
         if (BusyOverlay.Visibility != Visibility.Visible)
         {
             BusyOverlay.Visibility = Visibility.Visible;
-            BusyOverlay.BeginAnimation(OpacityProperty,
-                new System.Windows.Media.Animation.DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(140)));
+            Motion.FadeIn(BusyOverlay, 180);
         }
+        // 空转动画由 XAML 的 Loaded 触发只跑一次；HideBusy 会把它停掉，再次显示必须重新起转
+        Motion.Spin(BusySpin, true, 1300);
         _busyShown = true;
     }
 
@@ -1743,7 +1783,7 @@ public partial class MainWindow : Window
             bool ok = WindowEffects.TryEnableMica(this, enabled);
             // 云母开启时用"半透明主题底色"，而不是全透明：
             // 全透明会让桌面壁纸直接透出来，看上去像主题坏了。
-            RootFrame.SetResourceReference(BackgroundProperty, enabled && ok ? "B.WindowMica" : "B.Bg");
+            RootFrame.SetResourceReference(BackgroundProperty, enabled && ok ? "B.WindowMica" : "B.WindowBg");
         }
         catch { }
     }
@@ -1753,10 +1793,17 @@ public partial class MainWindow : Window
         try
         {
             bool compact = density.Equals("Compact", StringComparison.OrdinalIgnoreCase);
-            MainArea.Margin = _fullscreen ? new Thickness(0) : new Thickness(compact ? 10 : 16, compact ? 2 : 4, compact ? 10 : 16, compact ? 6 : 10);
-            SideColumnDef.Width = new GridLength(compact ? 258 : 286);
-            HeaderBar.Margin = new Thickness(compact ? 14 : 20, 0, compact ? 8 : 10, 0);
-            TxtStateBig.FontSize = compact ? 17 : 19;
+
+            // 全屏时侧栏宽度是 0、外边距是 0；这时再按密度改布局会把全屏布局弄坏。
+            if (!_fullscreen)
+            {
+                MainArea.Margin = new Thickness(compact ? 12 : 18, compact ? 4 : 8, compact ? 12 : 18, compact ? 6 : 10);
+                SideColumnDef.Width = new GridLength(compact ? 272 : 300);
+                HeaderBar.Margin = new Thickness(compact ? 12 : 18, 0, compact ? 8 : 10, 0);
+                StageCard.Margin = new Thickness(0, 0, compact ? 10 : 14, 0);
+            }
+
+            TxtStateBig.FontSize = compact ? 18 : 19;
             Dispatcher.BeginInvoke(() => { PositionBar(); PositionStats(); }, DispatcherPriority.Loaded);
         }
         catch { }
@@ -1919,8 +1966,28 @@ public partial class MainWindow : Window
                 return;
             }
 
-            Opacity = 0;
-            BeginAnimation(OpacityProperty, new System.Windows.Media.Animation.DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(220)));
+            Opacity = 1;
+            // 窗口本身 420ms 淡入；内容（顶栏/舞台/侧栏）由 PlayEntrance 错峰入场。
+            Motion.FadeIn(this, 420, 0, 0);
+        }
+        catch { }
+    }
+
+    /// <summary>
+    /// 窗口内容的错峰入场：顶栏从上落下 → 舞台从下浮起 → 侧栏从右滑入 → 底栏淡入。
+    /// 只在第一次显示时播；重连、刷新、切主题都不会重播。
+    /// </summary>
+    private void PlayEntrance()
+    {
+        if (_entrancePlayed) return;
+        _entrancePlayed = true;
+        try
+        {
+            Motion.Reveal(HeaderBar, HeaderSlide, 0, -14, 520, 0, 0);
+            Motion.Reveal(StageCard, StageSlide, 0, 16, 600, 60, 0);
+            Motion.Reveal(SideScroll, SideSlide, 18, 0, 620, 130, 0);
+            Motion.FadeIn(StatusBarRow, 500, 220);
+            GuideModel.PlayEntrance();
         }
         catch { }
     }
@@ -1929,15 +1996,12 @@ public partial class MainWindow : Window
     {
         if (!_busyShown) return;
         _busyShown = false;
-        var fade = new System.Windows.Media.Animation.DoubleAnimation(1, 0, TimeSpan.FromMilliseconds(220));
-        fade.Completed += (_, _) =>
+        Motion.FadeOut(BusyOverlay, 260, () =>
         {
             if (_busyShown) return;
             BusyOverlay.Visibility = Visibility.Collapsed;
-            BusyOverlay.BeginAnimation(OpacityProperty, null);
-            BusySpin.BeginAnimation(System.Windows.Media.RotateTransform.AngleProperty, null);   // 停掉空转动画
-        };
-        BusyOverlay.BeginAnimation(OpacityProperty, fade);
+            Motion.Spin(BusySpin, false);   // 停掉空转动画
+        });
     }
 
     // ------------------------------------------------------------------ 轮询
@@ -1982,12 +2046,13 @@ public partial class MainWindow : Window
         if (_closing) return;
         try
         {
-            var (lan, category, firewall) = await Task.Run(() =>
+            var (lan, category, firewall, wlan) = await Task.Run(() =>
             {
                 var l = NetInfo.GetLanInterface();
                 string c = l is null ? "Unknown" : NetInfo.GetNetworkCategory(l.Name);
                 bool f = NetInfo.HasFirewallRuleFor(NetworkFixer.RulePrefix);
-                return (l, c, f);
+                NetInfo.WlanLink? w = NetInfo.ReadWlanLink();
+                return (l, c, f, w);
             });
             string? hotspot = await Task.Run(NetInfo.DetectHotspotConflict);
             if (_lastSsid.Length == 0 && lan is not null)
@@ -2000,7 +2065,7 @@ public partial class MainWindow : Window
                 string key = $"{lan?.Address}|{category}|{firewall}";
                 bool changed = _lastLanKey.Length > 0 && _lastLanKey != key;
                 _lastLanKey = key;
-                _host.ApplyNetworkSnapshot(lan, category, firewall);
+                _host.ApplyNetworkSnapshot(lan, category, firewall, wlan);
                 _host.ApplyHotspotConflict(hotspot);
                 RefreshUi();
 
@@ -2126,6 +2191,12 @@ public partial class MainWindow : Window
             double overlayH = _stats.ActualHeight > 0 ? _stats.ActualHeight : 60;
             double top = 12;
 
+            // 状态卡是浮在**画面区**上的，而画面区从舞台顶栏（40px）下面才开始 ——
+            // 坐标却按 StageCard 顶边算，于是连接后它正好压在右上角那排按钮上。
+            // 顶栏可见就把这 40px 加回去（全屏时顶栏收起，高度自然为 0）。
+            double stageBarH = StageTopBar.Visibility == Visibility.Visible ? StageTopBar.ActualHeight : 0;
+            double videoH = Math.Max(1, h - stageBarH);
+
             // 画面在画面区里实际占的那块（字母框）：上边距就是可用的黑边高度
             double bar = 0;
             try
@@ -2141,9 +2212,9 @@ public partial class MainWindow : Window
                 top = Math.Max(4, (bar - overlayH) / 2);
             }
 
-            double clampedTop = Math.Clamp(top, 4, Math.Max(4, h - overlayH - 4));
+            double clampedTop = Math.Clamp(top, 4, Math.Max(4, videoH - overlayH - 4));
             _stats.Left = topLeft.X + w - _stats.ActualWidth - 12;
-            _stats.Top = topLeft.Y + clampedTop;
+            _stats.Top = topLeft.Y + stageBarH + clampedTop;
         }
         catch { }
     }
@@ -2188,6 +2259,36 @@ public partial class MainWindow : Window
         // 用资源引用而不是取一次 Brush：否则切换主题时颜色不会跟着变
         DotState.SetResourceReference(System.Windows.Shapes.Shape.FillProperty, dotKey);
         if (TxtStateBig.Text != state) TxtStateBig.Text = state;
+
+        // ---- 顶栏的"活状态"与舞台顶栏（一眼可见的一句话，不必先看侧栏） ----
+        bool session = mirroring || _demoCast;
+        string headerState = _mirrorBusy ? "正在准备"
+            : mirroring ? "投屏中"
+            : pending ? "正在连接"
+            : listening ? "等待设备"
+            : networkReady ? "接收端已关闭"
+            : "需要放行网络";
+        if (TxtHeaderState.Text != headerState)
+        {
+            TxtHeaderState.Text = headerState;
+            Motion.FadeIn(TxtHeaderState, 280);
+        }
+        DotHeader.SetResourceReference(System.Windows.Shapes.Shape.FillProperty, dotKey);
+
+        string deviceLabel = CurrentDeviceLabel();
+        string stageTitle = session ? deviceLabel : "本机画面";
+        string stageSub = session
+            ? (string.IsNullOrEmpty(_activeProtocol) ? "已连接 · 实时镜像" : $"已连接 · {_activeProtocol}")
+            : pending ? "正在建立连接…" : "等待设备投屏";
+        if (TxtStageTitle.Text != stageTitle) TxtStageTitle.Text = stageTitle;
+        if (TxtStageSub.Text != stageSub)
+        {
+            TxtStageSub.Text = stageSub;
+            Motion.FadeIn(TxtStageSub, 260);
+        }
+        DotStage.SetResourceReference(System.Windows.Shapes.Shape.FillProperty,
+            session ? "B.Ok" : pending ? "B.Warn" : "B.TextFaint");
+        UpdateStageChrome();
 
         // ---- 只在真的需要时才给出说明文字与动作按钮，正常状态保持干净 ----
         double pendingSeconds = 0;
@@ -2259,17 +2360,54 @@ public partial class MainWindow : Window
             StageConnecting.Visibility = connecting ? Visibility.Visible : Visibility.Collapsed;
             if (connecting)
             {
-                FadeIn(StageConnecting);
-                ConnSpin.BeginAnimation(System.Windows.Media.RotateTransform.AngleProperty,
-                    new System.Windows.Media.Animation.DoubleAnimation(0, 360, TimeSpan.FromSeconds(1)) { RepeatBehavior = System.Windows.Media.Animation.RepeatBehavior.Forever });
+                Motion.FadeIn(StageConnecting, 300);
+                Motion.Spin(ConnSpin, true, 1200);
             }
-            else ConnSpin.BeginAnimation(System.Windows.Media.RotateTransform.AngleProperty, null);
+            else
+            {
+                Motion.Spin(ConnSpin, false);
+            }
         }
         bool showGuide = !mirroring && !pending;
-        if (StageGuide.Visibility != (showGuide ? Visibility.Visible : Visibility.Collapsed))
+        if (showGuide)
         {
-            StageGuide.Visibility = showGuide ? Visibility.Visible : Visibility.Collapsed;
-            if (showGuide) FadeIn(StageGuide);
+            // 回到待机：如果上一次的"连接收尾"还在淡出，直接取消并恢复引导
+            bool wasExiting = _guideExiting;
+            _guideEpoch++;
+            _guideExiting = false;
+            if (wasExiting || StageGuide.Visibility != Visibility.Visible)
+            {
+                Motion.Stop(StageGuide);
+                StageGuide.Opacity = 1;
+            }
+            if (StageGuide.Visibility != Visibility.Visible)
+            {
+                StageGuide.Visibility = Visibility.Visible;
+                GuideModel.ResetForIdle();
+                GuideModel.PlayEntrance();
+                Motion.FadeIn(StageGuide, 360);
+            }
+            if (!_masked && WindowState != WindowState.Minimized) GuideModel.Start();
+            else GuideModel.Stop();
+        }
+        else if (StageGuide.Visibility == Visibility.Visible && !_guideExiting)
+        {
+            // 连接中 / 投屏中：手机先转回正面、轻微放大上浮，然后整块引导淡出
+            _guideExiting = true;
+            int epoch = ++_guideEpoch;
+            GuideModel.PlayConnectTransition();
+            Motion.FadeOut(StageGuide, 520, () =>
+            {
+                if (epoch != _guideEpoch)
+                {
+                    StageGuide.Opacity = 1;
+                    return;
+                }
+                StageGuide.Visibility = Visibility.Collapsed;
+                StageGuide.Opacity = 1;
+                _guideExiting = false;
+                GuideModel.Stop();
+            });
         }
 
         if (connecting)
@@ -2277,10 +2415,27 @@ public partial class MainWindow : Window
                 ? $"已等待 {pendingSeconds:F0} 秒"
                 : $"已等待 {pendingSeconds:F0} 秒，仍未连上";
 
-        // 右侧卡片：未连接时轮播「上手引导」，连上后换成「本次投屏」
-        bool session = mirroring || _demoCast;
-        TipsCard.Visibility = session ? Visibility.Collapsed : Visibility.Visible;
-        SessionCard.Visibility = session ? Visibility.Visible : Visibility.Collapsed;
+        // 右侧卡片：未连接时轮播「上手引导」，连上后换成「本次投屏」。
+        // 只在状态真正翻转时播一次交叉淡入，否则每秒刷新都会重播动画。
+        if (_lastSessionUi != session)
+        {
+            _lastSessionUi = session;
+            if (session)
+            {
+                TipsCard.Visibility = Visibility.Collapsed;
+                SessionCard.Visibility = Visibility.Visible;
+                Motion.Reveal(SessionCard, SessionSlideIn, 0, 10, 360, 40);
+                // 刚连上的一下：状态点轻轻跳一下，是"连上了"的即时反馈
+                Motion.Pulse(DotStageScale, 1.9, 420);
+                Motion.Pulse(DotSessionScale, 1.6, 420);
+            }
+            else
+            {
+                SessionCard.Visibility = Visibility.Collapsed;
+                TipsCard.Visibility = Visibility.Visible;
+                Motion.Reveal(TipsCard, TipsSlideIn, 0, 10, 360, 40);
+            }
+        }
         if (session)
         {
             if (_sessionSince is null) { _sessionSince = DateTime.UtcNow; _sessionShots = 0; _sessionRecords = 0; }
@@ -2395,16 +2550,30 @@ public partial class MainWindow : Window
             new System.Windows.Media.Animation.DoubleAnimation(0, -9, TimeSpan.FromMilliseconds(150)));
     }
 
+    /// <summary>舞台/顶栏里显示"现在是谁在投"：优先 AirPlay 聚焦会话的真实设备名。</summary>
+    private string CurrentDeviceLabel()
+    {
+        try
+        {
+            AirPlayService.AirPlaySession? focused = _host.AirPlay.FocusedSession;
+            if (focused is not null) return focused.Label;
+        }
+        catch { }
+        return _activeIdentity?.ShortLabel() ?? "手机画面";
+    }
+
     /// <summary>已连接时显示本次投屏的实时信息。</summary>
     private void UpdateSessionCard()
     {
         var cfg = _host.Settings;
-        TxtSessionQuality.Text = cfg.QualityPreset switch
-        {
-            "HighQuality" => "高画质 1080p",
-            "Balanced" => "均衡 1080p",
-            _ => "低延迟 720p",
-        };
+        TxtSessionQuality.Text = _host.AirPlay.SessionCount > 0
+            ? _host.AirPlay.Quality.ShortText
+            : cfg.QualityPreset switch
+            {
+                "HighQuality" => "高画质 1080p",
+                "Balanced" => "均衡 1080p",
+                _ => "低延迟 720p",
+            };
 
         string verdict = _statsData.Verdict;
         TxtSessionHealth.Text = verdict switch
@@ -2480,9 +2649,12 @@ public partial class MainWindow : Window
             HeaderBar.Visibility = Visibility.Collapsed;
             StatusBarRow.Visibility = Visibility.Collapsed;
             SideColumnDef.Width = new GridLength(0);
-            // 关键：行是固定高度，光隐藏内容仍会各留出 46/30 的空白带，必须把行高归零
+            // 关键：行是固定高度，光隐藏内容仍会各留出 56/34 的空白带，必须把行高归零
             RowHeader.Height = new GridLength(0);
             RowStatus.Height = new GridLength(0);
+            // 舞台顶栏也收起来：全屏只留画面，别在画面上留一条工具条
+            StageTopBar.Visibility = Visibility.Collapsed;
+            StageBarRow.Height = new GridLength(0);
             RootFrame.BorderThickness = new Thickness(0);   // 去掉左右那 1px 描边
             MainArea.Margin = new Thickness(0);
             StageCard.Margin = new Thickness(0);
@@ -2533,13 +2705,14 @@ public partial class MainWindow : Window
 
             HeaderBar.Visibility = Visibility.Visible;
             StatusBarRow.Visibility = Visibility.Visible;
-            SideColumnDef.Width = new GridLength(316);
-            RowHeader.Height = new GridLength(46);
-            RowStatus.Height = new GridLength(30);
+            // 侧栏宽度/外边距/舞台间距一律交回密度策略，避免"紧凑模式退出全屏后尺寸跳回默认"
+            SideColumnDef.Width = new GridLength(300);
+            RowHeader.Height = new GridLength(50);
+            RowStatus.Height = new GridLength(32);
+            StageTopBar.Visibility = Visibility.Visible;
+            StageBarRow.Height = new GridLength(40);
             RootFrame.BorderThickness = new Thickness(1);
-            MainArea.Margin = new Thickness(16, 4, 16, 10);
-            StageCard.Margin = new Thickness(0, 0, 14, 0);
-
+            ApplyDensity(_host.Settings.Density);
 
         }
         // 全屏切换会改窗口大小/位置，布局完成后再把控制条摆正（否则要拖动窗口才归位）
@@ -2698,12 +2871,18 @@ public partial class MainWindow : Window
         if (_bar is null)
         {
             _bar = new OverlayBarWindow { Owner = this };
-            _bar.ToggleFullscreenRequested += () => SetFullscreen(!_fullscreen);
+            // 条上只留"这里才有"的动作：截屏 / 录制 / 小窗（全屏时多一个"退出全屏"）。
+            // 全屏、适配、缩放都长在舞台顶栏上，条里不再重复一份。
             _bar.ScreenshotRequested += TakeScreenshot;
             _bar.RecordRequested += ToggleRecording;
-            _bar.FitToggled += () => { CycleFit(); _lastBarActivity = DateTime.UtcNow; };
-            _bar.ZoomChanged += delta => { SetZoom(double.IsNaN(delta) ? 1.0 : _zoom + delta); _lastBarActivity = DateTime.UtcNow; };
             _bar.MiniWindowRequested += ToggleMiniWindow;
+            _bar.ExitFullscreenRequested += () => SetFullscreen(false);
+            // 展开 / 收起会改窗口尺寸：贴底重摆一次，按钮才不会跟着列表一起往上跑
+            _bar.LayoutChanged += () =>
+            {
+                _lastBarActivity = DateTime.UtcNow;
+                Dispatcher.BeginInvoke(() => PositionBar(), DispatcherPriority.Loaded);
+            };
             if (_host.Settings.AntiCapture) WindowProtection.SetProtection(_bar, true);
         }
         SyncBar();
@@ -2721,7 +2900,7 @@ public partial class MainWindow : Window
     private void SyncBar()
     {
         if (_bar is null) return;
-        _bar.SyncState(_fullscreen, FitName(_fit), _zoom, CanCapture());
+        _bar.SyncState(_fullscreen, CanCapture());
     }
 
     private void PositionBar()
@@ -2836,7 +3015,7 @@ public partial class MainWindow : Window
         _ => Interop.CompositionVideoHost.VideoFit.Fit,
     };
 
-    /// <summary>切换适配方式（全屏控制条与设置窗口共用）。</summary>
+    /// <summary>切换适配方式（舞台顶栏与设置窗口共用）。</summary>
     public void SetFit(Interop.CompositionVideoHost.VideoFit fit)
     {
         _fit = fit;
@@ -2846,7 +3025,7 @@ public partial class MainWindow : Window
         _host.Settings.MirrorFit = fit.ToString();
         _host.Settings.Save();
         TxtHint.Text = $"画面：{FitName(fit)}" + (_zoom != 1.0 ? $" · {_zoom * 100:F0}%" : "") + " · F11 进入全屏";
-        SyncBar();
+        UpdateStageChrome();
     }
 
     /// <summary>设置缩放倍率。</summary>
@@ -2858,8 +3037,31 @@ public partial class MainWindow : Window
         _host.Settings.MirrorZoom = _zoom;
         _host.Settings.Save();
         TxtHint.Text = $"画面：{FitName(_fit)}" + (_zoom != 1.0 ? $" · {_zoom * 100:F0}%" : "") + " · F11 进入全屏";
-        SyncBar();
+        UpdateStageChrome();
     }
+
+    /// <summary>舞台顶栏上的"正在看什么/怎么缩放"，跟着适配与缩放实时更新。</summary>
+    private void UpdateStageChrome()
+    {
+        try
+        {
+            if (BtnStageFit is not null) BtnStageFit.Content = FitName(_fit);
+            if (TxtStageZoom is not null) TxtStageZoom.Text = $"{_zoom * 100:F0}%";
+        }
+        catch { }
+    }
+
+    private void BtnStageFit_Click(object sender, RoutedEventArgs e)
+    {
+        CycleFit();
+        _lastBarActivity = DateTime.UtcNow;
+    }
+
+    private void BtnStageZoomOut_Click(object sender, RoutedEventArgs e) => SetZoom(_zoom - 0.1);
+
+    private void BtnStageZoomIn_Click(object sender, RoutedEventArgs e) => SetZoom(_zoom + 0.1);
+
+    private void BtnStageFullscreen_Click(object sender, RoutedEventArgs e) => SetFullscreen(!_fullscreen);
 
     private void CycleFit()
     {
@@ -3200,7 +3402,7 @@ public partial class MainWindow : Window
                 Windows.Media.Core.MediaSource? source = session.MediaSource;
                 if (source is null) continue;
 
-                host.AttachSource(source, 1920, 1080, realTime: true);
+                host.AttachSource(source, _host.AirPlay.VideoWidth, _host.AirPlay.VideoHeight, realTime: true);
                 host.Fit = Interop.CompositionVideoHost.VideoFit.Fit;
                 host.Volume = _host.Settings.Volume;
                 _attachedSessions.Add(session.Id);
@@ -3355,6 +3557,34 @@ public partial class MainWindow : Window
     /// 画面上的鼠标按下：点到并排的某一格＝把这一路放大（④）；
     /// 点在主画面上＝记下起点，供"点按 vs 拖动"判断（电脑控制手机）。
     /// </summary>
+    /// <summary>
+    /// 待机页：鼠标在手机附近移动时，左右直接映射成 -25°…+25° 的转台角度，
+    /// 上下给一点视差。移出手机范围就交还给自动摇摆，避免在侧栏上划鼠标手机也乱转。
+    /// </summary>
+    private void OnStageMouseMove(object sender, MouseEventArgs e)
+    {
+        try
+        {
+            if (StageGuide.Visibility != Visibility.Visible || _masked || WindowState == WindowState.Minimized) return;
+
+            Point p = e.GetPosition(GuideModel);
+            double w = Math.Max(1, GuideModel.ActualWidth);
+            double h = Math.Max(1, GuideModel.ActualHeight);
+            double nx = (p.X / w - 0.5) * 2;
+            double ny = (p.Y / h - 0.5) * 2;
+
+            // 稍微放宽 25%：在手机边缘附近也能触发，离开就回自动摇摆
+            if (nx is < -1.25 or > 1.25 || ny is < -1.25 or > 1.25)
+            {
+                GuideModel.ResetPointer();
+                return;
+            }
+
+            GuideModel.SetPointer(Math.Clamp(nx, -1, 1), Math.Clamp(ny, -1, 1));
+        }
+        catch { }
+    }
+
     private void OnStagePointerDown(object sender, MouseButtonEventArgs e)
     {
         try
@@ -3520,8 +3750,8 @@ public partial class MainWindow : Window
         if (AdbCard is null || PhoneBar is null || BtnAdbConnect is null) return;
         Visibility visibility = AdbEnabled ? Visibility.Visible : Visibility.Collapsed;
         AdbCard.Visibility = visibility;
-        // 外层的滚动区一起收掉：只收卡片会留下一条空的滚动区域
-        if (AdbScroll is not null) AdbScroll.Visibility = visibility;
+        // 外层包一块：只收"电脑控制手机"这一块，**不要**收整个侧栏
+        if (AdbSection is not null) AdbSection.Visibility = visibility;
         BtnAdbConnect.Visibility = visibility;
         // 控制条本来就要"连上手机才出现"，关闭时永远收起
         PhoneBar.Visibility = AdbEnabled && _phoneBarShown

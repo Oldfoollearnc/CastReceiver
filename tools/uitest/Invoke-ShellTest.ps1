@@ -4,6 +4,37 @@ param(
     [int]$StartupWaitSeconds = 12
 )
 Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes
+Add-Type @"
+using System;using System.Runtime.InteropServices;
+public class ShellWin {
+  [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y);
+  [DllImport("user32.dll")] public static extern int GetSystemMetrics(int i);
+  private delegate bool EnumProc(IntPtr h, IntPtr p);
+  [DllImport("user32.dll")] private static extern bool EnumWindows(EnumProc cb, IntPtr p);
+  [DllImport("user32.dll")] private static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
+  [DllImport("user32.dll")] private static extern bool IsWindowVisible(IntPtr h);
+  [DllImport("user32.dll", CharSet=CharSet.Unicode)] private static extern int GetWindowTextW(IntPtr h, System.Text.StringBuilder s, int n);
+  // 控制条是 ShowInTaskbar=False 的无边框窗口，UIA 根子元素里看不到它：必须走 Win32 枚举
+  public static IntPtr Find(int pid, string title) {
+    IntPtr found = IntPtr.Zero;
+    EnumWindows(delegate(IntPtr h, IntPtr p) {
+      uint o; GetWindowThreadProcessId(h, out o);
+      if (o == (uint)pid && IsWindowVisible(h)) {
+        var sb = new System.Text.StringBuilder(256); GetWindowTextW(h, sb, 256);
+        if (sb.ToString() == title) { found = h; return false; }
+      }
+      return true;
+    }, IntPtr.Zero);
+    return found;
+  }
+}
+"@
+
+function Find-Win32($targetPid, [string]$name) {
+    $h = [ShellWin]::Find($targetPid, $name)
+    if ($h -eq [IntPtr]::Zero) { return $null }
+    return [System.Windows.Automation.AutomationElement]::FromHandle($h)
+}
 
 function All-Windows($targetPid) {
     $root = [System.Windows.Automation.AutomationElement]::RootElement
@@ -47,21 +78,27 @@ if ($tut) {
 $main = Find-Win $p.Id "投屏Window"
 Write-Host "② 主窗口：$(if ($main) { '存在 OK' } else { '未找到 ✗' })"
 
-# ② 窗口模式下控制条常驻
-$bar = Find-Win $p.Id "控制条"
+# ② 窗口模式下控制条常驻（极简化后：直接摆出 截屏 / 录制 / 小窗，没有"更多"这一层）
+$bar = Find-Win32 $p.Id "控制条"
 Write-Host "③ 窗口模式下的悬浮控制条：$(if ($bar) { '已常驻 OK' } else { '未出现 ✗' })"
 if ($bar) {
-    $fsBtn = Find-ByName $bar "全屏"
-    Write-Host "   控制条上的按钮：全屏=$(if ($fsBtn) { '有' } else { '无' })、画面适配=$(if (Find-ByName $bar '画面适配') { '有' } else { '无' })、缩小=$(if (Find-ByName $bar '缩小') { '有' } else { '无' })、放大=$(if (Find-ByName $bar '放大') { '有' } else { '无' })"
+    $btns = @()
+    $c = New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::ControlTypeProperty, [System.Windows.Automation.ControlType]::Button)
+    foreach ($b in $bar.FindAll([System.Windows.Automation.TreeScope]::Descendants, $c)) { $btns += $b.Current.Name }
+    Write-Host "   控制条上的按钮：$(if ($btns.Count) { $btns -join ' | ' } else { '（无）' })"
     Write-Host "   是否还有音量控件：$(if (Find-ByName $bar '静音') { '有（应为无）' } else { '已删除 OK' })"
+    Write-Host "   是否还重复舞台顶栏的按钮：$(if (Find-ByName $bar '放大') { '有（应为无）✗' } else { '已去掉 OK' })"
 }
 
-# ③ 全屏 → 退出 → 尺寸恢复
+# ③ 全屏 → 退出 → 尺寸恢复（进入用舞台顶栏的「全屏」，退出用控制条里的「退出全屏」）
 $before = Rect-Of $main
 Write-Host "④ 进入全屏前窗口：$before"
-if ($bar) { Click (Find-ByName $bar "全屏") | Out-Null }
+if ($main) { Click (Find-ByName $main "全屏") | Out-Null }
 Start-Sleep -Seconds 4
-$bar = Find-Win $p.Id "控制条"
+# 全屏时控制条只在鼠标靠近屏幕底部时出现，先把它叫出来
+[ShellWin]::SetCursorPos([int]([ShellWin]::GetSystemMetrics(0) / 2), [ShellWin]::GetSystemMetrics(1) - 40) | Out-Null
+Start-Sleep -Milliseconds 900
+$bar = Find-Win32 $p.Id "控制条"
 $fs = Rect-Of $main
 Write-Host "   全屏中窗口：$fs"
 if ($bar) { Click (Find-ByName $bar "退出全屏") | Out-Null }

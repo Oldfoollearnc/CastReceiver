@@ -1,0 +1,33 @@
+<UserControl x:Class="CastReceiver.App.PhoneSpriteView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             Background="Transparent" IsHitTestVisible="False" ClipToBounds="False">
+    <!--
+        待机页的"产品渲染"：由 D:\Blender\projects\phone-anim\vivo_x500pro.blend 渲染的
+        60 帧转台，合成一张 10×6 雪碧图；这里只取前 31 帧（-25° → +25° 单调变化），
+        用鼠标左右位置直接控制旋转角度，上下位置控制轻微的上下视差。
+        连接成功后由 MainWindow 调 PlayConnectTransition：回到正面、放大、淡出。
+    -->
+    <Grid x:Name="Root" RenderTransformOrigin="0.5,0.5">
+        <Grid.RenderTransform>
+            <ScaleTransform x:Name="EntranceScale" ScaleX="1" ScaleY="1" />
+        </Grid.RenderTransform>
+
+        <Grid x:Name="FloatHost">
+            <Grid.RenderTransform>
+                <TranslateTransform x:Name="Float" X="0" Y="0" />
+            </Grid.RenderTransform>
+            <Grid x:Name="ParallaxHost">
+                <Grid.RenderTransform>
+                    <TranslateTransform x:Name="Parallax" X="0" Y="0" />
+                </Grid.RenderTransform>
+                <Image x:Name="Sprite" Stretch="Uniform" HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
+                       RenderTransformOrigin="0.5,0.5">
+                    <Image.RenderTransform>
+                        <ScaleTransform x:Name="PointerScale" ScaleX="1" ScaleY="1" />
+                    </Image.RenderTransform>
+                </Image>
+            </Grid>
+        </Grid>
+    </Grid>
+</UserControl>

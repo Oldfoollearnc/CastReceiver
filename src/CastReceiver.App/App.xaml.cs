@@ -91,6 +91,9 @@ public partial class App : Application
             CurrentThemeFile = file;
         }
         catch { }
+        // 主题换了之后要把强调色覆盖层重新算一遍：弱化色（Soft/Line/FocusRing）是
+        // 从强调色现算的，不重算的话切主题后聚焦环/选中底会停在上一套的 alpha 上。
+        try { ApplyAccentCore((Current as App)?.Host?.Settings.Accent ?? "Mint"); } catch { }
         if (persist && Current is App app && app.Host is not null)
         {
             app.Host.Settings.Theme = theme;
@@ -111,6 +114,13 @@ public partial class App : Application
 
     /// <summary>应用强调色（Mint/Amber/Violet/Rose/Blue/System）。</summary>
     public static void ApplyAccent(string accent)
+    {
+        ApplyAccentCore(accent);
+        ThemeChanged?.Invoke();
+    }
+
+    /// <summary>真正写覆盖层的那一步（不触发事件；主题切换时复用，避免递归）。</summary>
+    private static void ApplyAccentCore(string accent)
     {
         try
         {
@@ -140,12 +150,11 @@ public partial class App : Application
                 System.Windows.Media.Color.FromArgb(0x24, color.R, color.G, color.B));
             overlay["B.AccentLine"] = new System.Windows.Media.SolidColorBrush(
                 System.Windows.Media.Color.FromArgb(0x70, color.R, color.G, color.B));
-            // 焦点环光晕：这个 alpha 直接决定键盘焦点可见度，太淡等于没有（0x5A 时几乎看不见）
+            // 焦点环光晕：这个 alpha 直接决定键盘焦点可见度，太淡等于没有
             overlay["B.FocusRing"] = new System.Windows.Media.SolidColorBrush(
                 System.Windows.Media.Color.FromArgb(0x99, color.R, color.G, color.B));
         }
         catch { }
-        ThemeChanged?.Invoke();
     }
 
     private static (string, string) FromSystemAccent()
@@ -227,6 +236,7 @@ public partial class App : Application
 
         // 宿主很轻（配置 + 日志 + Miracast 服务对象）
         Host = new CastAppHost();
+        Motion.SetEnabled(Host.Settings.UiMotion);
         ApplyTheme(Host.Settings.Theme, persist: false);   // 先按用户选择换肤，再显示主界面
         ApplyAccent(Host.Settings.Accent);
         Host.Log.Info("startup", $"启动阶段：宿主就绪 {SinceProcessStart():F0}ms");

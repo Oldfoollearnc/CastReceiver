@@ -39,6 +39,9 @@
 
   <ItemGroup>
     <Content Include="..\..\assets\sample.mp4" Link="Assets\sample.mp4" CopyToOutputDirectory="PreserveNewest" />
+    <!-- 待机页的产品渲染（Blender 工程 phone-anim 渲染的 60 帧转台，10×6 雪碧图）。
+         素材缺失时程序会自动回落到纯 WPF 的 3D 手机，不影响启动。 -->
+    <Content Include="..\..\assets\ui\phone-turntable.png" Link="Assets\ui\phone-turntable.png" CopyToOutputDirectory="PreserveNewest" Condition="Exists('..\..\assets\ui\phone-turntable.png')" />
     <!-- 启动入场动画的内置片段（设置里可切换，也可导入自己的视频，导入的原文件直接播放不转码）。
          这批小片段由 tools\splash-tool + ffmpeg 裁出来：1280 宽、约 7 秒、带原声。 -->
   </ItemGroup>

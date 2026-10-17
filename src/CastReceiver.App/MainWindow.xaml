@@ -2,27 +2,26 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:ctrl="clr-namespace:CastReceiver.App.Interop"
+        xmlns:local="clr-namespace:CastReceiver.App"
         xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
         Icon="app.ico"
         Title="投屏Window" Height="720" Width="1120" MinHeight="470" MinWidth="880"
-        Background="{DynamicResource B.Bg}" Foreground="{DynamicResource B.Text}"
+        Background="{DynamicResource B.WindowBg}" Foreground="{DynamicResource B.Text}"
         FontFamily="{DynamicResource F.Ui}" WindowStartupLocation="CenterScreen"
         WindowStyle="None" ResizeMode="CanResize" UseLayoutRounding="True"
         TextOptions.TextFormattingMode="Ideal" TextOptions.TextRenderingMode="ClearType">
 
     <shell:WindowChrome.WindowChrome>
-        <shell:WindowChrome CaptionHeight="48" ResizeBorderThickness="6" GlassFrameThickness="0"
+        <shell:WindowChrome CaptionHeight="50" ResizeBorderThickness="6" GlassFrameThickness="0"
                             CornerRadius="0" UseAeroCaptionButtons="False" />
     </shell:WindowChrome.WindowChrome>
 
-    <Border x:Name="RootFrame" Background="{DynamicResource B.Bg}" BorderBrush="{DynamicResource B.Line}" BorderThickness="1">
+    <Border x:Name="RootFrame" Background="{DynamicResource B.WindowBg}" BorderBrush="{DynamicResource B.Line}" BorderThickness="1">
         <Grid>
-            <!-- 最小尺寸是按「1366×768 @150% 缩放」反算的底线：可用工作区约 910×485 DIP
-                 （1366/1.5≈910.7，768/1.5=512，再扣掉任务栏）。MinHeight 必须 < 485，
-                 否则底栏（状态与快捷键提示）会掉到屏幕外 —— 别再往上调。
-                 固定顶栏 48 + 底栏 32，所以 470 还剩约 390 给画面。 -->
+            <!-- 最小尺寸是按「1366×768 @150% 缩放」反算的底线：可用工作区约 910×485 DIP。
+                 固定顶栏 50 + 底栏 32，所以 470 还剩约 380 给画面。 -->
             <Grid.RowDefinitions>
-                <RowDefinition x:Name="RowHeader" Height="48" />
+                <RowDefinition x:Name="RowHeader" Height="50" />
                 <RowDefinition x:Name="RowBody" Height="*" />
                 <RowDefinition x:Name="RowStatus" Height="32" />
             </Grid.RowDefinitions>
@@ -41,7 +40,6 @@
                     </MediaElement.RenderTransform>
                 </MediaElement>
 
-                <!-- 暗角：把注意力收到画面中间，也让叠在上面的标题更清楚 -->
                 <Border IsHitTestVisible="False" Opacity="0.55">
                     <Border.Background>
                         <RadialGradientBrush Center="0.5,0.5" GradientOrigin="0.5,0.5" RadiusX="0.75" RadiusY="0.9">
@@ -51,11 +49,10 @@
                     </Border.Background>
                 </Border>
 
-                <!-- 标题：唯一的文字。左侧一条强调色细线是唯一的一点品牌色 -->
                 <StackPanel x:Name="IntroTitle" Orientation="Horizontal" HorizontalAlignment="Left"
                             VerticalAlignment="Bottom" Margin="46,0,0,58" Opacity="0">
-                    <Border x:Name="IntroAccent" Width="0" Height="52" CornerRadius="2" Background="{DynamicResource B.Accent}"
-                            Margin="0,0,16,0" VerticalAlignment="Center" />
+                    <Border x:Name="IntroAccent" Width="0" Height="52" CornerRadius="2"
+                            Background="{DynamicResource B.Accent}" Margin="0,0,16,0" VerticalAlignment="Center" />
                     <StackPanel VerticalAlignment="Center">
                         <TextBlock Text="投屏Window" FontSize="34" FontWeight="SemiBold" Foreground="#F4F6F8" />
                         <TextBlock Text="手机画面，投到大屏" FontSize="13" Foreground="#A7AEB8" Margin="2,6,0,0" />
@@ -63,43 +60,47 @@
                 </StackPanel>
             </Grid>
 
-            <!-- ============ 顶栏（可拖动） ============ -->
-            <Grid x:Name="HeaderBar" Grid.Row="0">
+            <!-- ============================================================ 顶栏（可拖动） -->
+            <Grid x:Name="HeaderBar" Grid.Row="0" Margin="18,0,10,0">
+                <Grid.RenderTransform>
+                    <TranslateTransform x:Name="HeaderSlide" X="0" Y="0" />
+                </Grid.RenderTransform>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
-                <Border Grid.ColumnSpan="3" VerticalAlignment="Bottom" Height="1" Background="{DynamicResource B.LineSoft}" />
 
-                <StackPanel Grid.Column="0" Orientation="Horizontal" Margin="18,0,0,0" VerticalAlignment="Center">
-                    <!-- 图标：极简显示器轮廓，纯矢量、无渐变 -->
+                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
                     <Path Width="18" Height="18" Stretch="Uniform" Fill="{DynamicResource B.Text}"
                           Data="M2,3 H16 A1,1 0 0 1 17,4 V11 A1,1 0 0 1 16,12 H2 A1,1 0 0 1 1,11 V4 A1,1 0 0 1 2,3 Z M6,14 H12 V15.5 H6 Z" />
-                    <TextBlock Text="投屏Window" FontSize="14" FontWeight="SemiBold" Margin="10,0,0,0" VerticalAlignment="Center" />
+                    <TextBlock Text="投屏Window" FontSize="14.5" FontWeight="SemiBold" Margin="10,0,0,0" VerticalAlignment="Center" />
+
+                    <TextBlock x:Name="TxtHeaderDevice" Text="本机" FontSize="11.5" Foreground="{DynamicResource B.TextFaint}"
+                               Margin="14,0,0,0" VerticalAlignment="Center" MaxWidth="200" TextTrimming="CharacterEllipsis" />
                 </StackPanel>
 
-                <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,6,0"
+                <!-- 中间只留一句状态，不加底色/彩色圆点 -->
+                <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
+                    <Ellipse x:Name="DotHeader" Width="6" Height="6" Fill="{DynamicResource B.TextFaint}" VerticalAlignment="Center" />
+                    <TextBlock x:Name="TxtHeaderState" Text="等待连接" FontSize="11.5" Margin="7,0,0,0"
+                               Foreground="{DynamicResource B.TextFaint}" VerticalAlignment="Center" />
+                </StackPanel>
+
+                <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,4,0"
                             shell:WindowChrome.IsHitTestVisibleInChrome="True">
                     <Button x:Name="BtnPrepare" Style="{StaticResource S.BtnPrimary}" Click="BtnPrepare_Click"
-                            Content="一键准备" Margin="0,0,10,0" Padding="14,6" FontSize="12" MinHeight="30" />
+                            Content="一键准备" Margin="0,0,8,0" Padding="14,6" FontSize="12" MinHeight="30" />
                     <Button x:Name="BtnAppearance" Style="{StaticResource S.BtnIcon}" Click="BtnAppearance_Click"
-                            MouseRightButtonUp="BtnAppearance_RightClick" Margin="0,0,6,0"
+                            MouseRightButtonUp="BtnAppearance_RightClick" Margin="0,0,4,0"
                             AutomationProperties.Name="切换外观" ToolTip="切换深色 / 浅色（右键也能打开设置）">
-                        <!-- 深色主题下是「月亮」：外弧 r=8 走左半圆，内弧 r=8.9 收在 (7,10) 形成月牙。
-                             内弧半径必须 > 8（弦长 16 的一半）：否则按 SVG 规则半径会被等比放大到 8，
-                             与外弧完全重合、图形面积归零，深色主题下这个按钮就是「看不见」的。 -->
                         <Path x:Name="AppearanceIcon" Width="15" Height="15" Stretch="Uniform"
                               Fill="{DynamicResource B.TextDim}" Data="M12,2 A8,8 0 1 0 12,18 A8.9,8.9 0 0 1 12,2 Z" />
                     </Button>
-
-                    <!-- 设置：主题按钮旁边常驻一个齿轮（替代被删掉的侧栏「当前设置」卡片里的「打开设置」） -->
                     <Button x:Name="BtnSettings" Content="&#xE713;" Style="{StaticResource S.BtnIcon}" Click="BtnSettings_Click"
-                            Margin="0,0,6,0" AutomationProperties.Name="设置" ToolTip="打开设置" />
+                            Margin="0,0,4,0" AutomationProperties.Name="设置" ToolTip="打开设置" />
 
-                    <!-- 应用动作（外观/设置）与窗口控制（最小化/最大化/关闭）之间加一条分隔：
-                         两组按钮语义不同，紧挨着放容易误点到最小化 -->
-                    <Border Width="1" Height="20" Background="{DynamicResource B.Line}" Margin="2,0,8,0" />
+                    <Border Width="1" Height="20" Background="{DynamicResource B.Line}" Margin="6,0,8,0" />
 
                     <Button Content="&#xE921;" Style="{StaticResource S.BtnChrome}" Click="BtnMinimize_Click"
                             AutomationProperties.Name="最小化" ToolTip="最小化" />
@@ -108,6 +109,8 @@
                     <Button Content="&#xE8BB;" Style="{StaticResource S.BtnClose}" Click="BtnClose_Click"
                             AutomationProperties.Name="关闭" ToolTip="关闭" />
                 </StackPanel>
+
+                <Border Grid.ColumnSpan="3" VerticalAlignment="Bottom" Height="1" Background="{DynamicResource B.LineSoft}" Margin="-18,0,-10,0" />
             </Grid>
 
             <!-- ============ 主体 ============ -->
@@ -122,332 +125,395 @@
                 </Grid.RowDefinitions>
 
                 <!-- 画面 -->
-                <Border x:Name="StageCard" Grid.Column="0" Style="{StaticResource S.Card}" ClipToBounds="True" Margin="0,0,16,0">
-                    <Grid Background="#000000">
-                        <!-- 待机时的柔和底光：视频宿主不在时才有机会被看到（HwndHost 会盖住 WPF 元素） -->
-                        <Rectangle IsHitTestVisible="False">
-                            <Rectangle.Fill>
-                                <RadialGradientBrush Center="0.5,0.42" GradientOrigin="0.5,0.42" RadiusX="0.62" RadiusY="0.72">
-                                    <GradientStop Color="#16191E" Offset="0" />
-                                    <GradientStop Color="#0A0B0D" Offset="0.62" />
-                                    <GradientStop Color="#000000" Offset="1" />
-                                </RadialGradientBrush>
-                            </Rectangle.Fill>
-                        </Rectangle>
+                <Border x:Name="StageCard" Grid.Column="0" Style="{StaticResource S.Stage}" ClipToBounds="True" Margin="0,0,14,0">
+                    <Border.RenderTransform>
+                        <TranslateTransform x:Name="StageSlide" X="0" Y="0" />
+                    </Border.RenderTransform>
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition x:Name="StageBarRow" Height="40" />
+                            <RowDefinition Height="*" />
+                        </Grid.RowDefinitions>
 
-                        <!-- 画面区布局（③）：左列＝主画面，右列＝其余各路的格子。
-                             各路的画面宿主（MultiViewTile）由 SyncMultiView 动态加进来 ——
-                             注意它们和 MiracastHost 一样都是这个 Grid 的直接子节点，**只改行列、不换父节点**：
-                             HwndHost 换父节点会销毁重建子窗口，画面就得重挂（"一片黑"的老坑）。
-                             只有 1 路时右列宽度归零，不会白留一块空区域。 -->
-                        <Grid x:Name="StageLayout">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition x:Name="StageMainColumn" Width="*" />
-                                <ColumnDefinition x:Name="StageTileColumn" Width="0" />
-                            </Grid.ColumnDefinitions>
-                            <ctrl:CompositionVideoHost x:Name="MiracastHost" Grid.Column="0" Visibility="Collapsed" />
-                        </Grid>
-
-                        <!-- 连接中 -->
-                        <StackPanel x:Name="StageConnecting" Visibility="Collapsed" HorizontalAlignment="Center" VerticalAlignment="Center">
-                            <Grid Width="46" Height="46" HorizontalAlignment="Center" RenderTransformOrigin="0.5,0.5">
-                                <Grid.RenderTransform><RotateTransform x:Name="ConnSpin" Angle="0" /></Grid.RenderTransform>
-
-                                <Ellipse Stroke="#3A4048" StrokeThickness="2" />
-                                <Path Stroke="{DynamicResource B.Accent}" StrokeThickness="2" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
-                                      Data="M23,2 A21,21 0 0 1 44,23" />
-                            </Grid>
-                            <TextBlock x:Name="TxtConnectingTitle" Text="手机正在连接" FontSize="17" FontWeight="SemiBold" Foreground="#ECEDEF"
-                                       HorizontalAlignment="Center" Margin="0,18,0,0" />
-                            <TextBlock x:Name="TxtConnectingHint" Text="正在建立无线镜像连接…" FontSize="12.5"
-                                       Foreground="#98A0AA" HorizontalAlignment="Center" Margin="0,7,0,0" />
-                        </StackPanel>
-
-                        <!-- 待机引导 -->
-                        <StackPanel x:Name="StageGuide" HorizontalAlignment="Center" VerticalAlignment="Center">
-                            <Path Width="46" Height="46" Stretch="Uniform" Fill="#262B32" HorizontalAlignment="Center"
-                                  Data="M6,2 H26 A3,3 0 0 1 29,5 V27 A3,3 0 0 1 26,30 H6 A3,3 0 0 1 3,27 V5 A3,3 0 0 1 6,2 Z M8,5 V27 H24 V5 Z M13,32 H19 V34 H13 Z" />
-                            <TextBlock x:Name="TxtGuideTitle" Text="等待手机镜像" FontSize="19" FontWeight="SemiBold" Foreground="#ECEDEF"
-                                       HorizontalAlignment="Center" Margin="0,16,0,0" />
-                            <TextBlock x:Name="TxtGuideHint" FontSize="12.5" Foreground="#98A0AA"
-                                       HorizontalAlignment="Center" Margin="0,7,0,0" Text="手机与本机连同一个 Wi-Fi" />
-
-                            <!-- 三步就位：比一整句话好扫 -->
-                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,20,0,0"
-                                        ToolTip="手机下拉快捷面板 →「无线投屏 / 投射屏幕」→ 在设备列表里选择本机名称">
-                                <Border Background="#14FFFFFF" BorderBrush="#1FFFFFFF" BorderThickness="1" CornerRadius="999" Padding="11,6">
-                                    <StackPanel Orientation="Horizontal">
-                                        <TextBlock Text="1" FontFamily="{DynamicResource F.Mono}" FontSize="11" Foreground="{DynamicResource B.Accent}" VerticalAlignment="Center" />
-                                        <TextBlock Text="同一 Wi-Fi" FontSize="12" Foreground="#C6CCD3" Margin="7,0,0,0" VerticalAlignment="Center" />
-                                    </StackPanel>
-                                </Border>
-                                <Border Background="#14FFFFFF" BorderBrush="#1FFFFFFF" BorderThickness="1" CornerRadius="999" Padding="11,6" Margin="8,0,0,0">
-                                    <StackPanel Orientation="Horizontal">
-                                        <TextBlock Text="2" FontFamily="{DynamicResource F.Mono}" FontSize="11" Foreground="{DynamicResource B.Accent}" VerticalAlignment="Center" />
-                                        <TextBlock Text="下拉「无线投屏」" FontSize="12" Foreground="#C6CCD3" Margin="7,0,0,0" VerticalAlignment="Center" />
-                                    </StackPanel>
-                                </Border>
-                                <Border Background="#14FFFFFF" BorderBrush="#1FFFFFFF" BorderThickness="1" CornerRadius="999" Padding="11,6" Margin="8,0,0,0">
-                                    <StackPanel Orientation="Horizontal">
-                                        <TextBlock Text="3" FontFamily="{DynamicResource F.Mono}" FontSize="11" Foreground="{DynamicResource B.Accent}" VerticalAlignment="Center" />
-                                        <TextBlock Text="选中本机名称" FontSize="12" Foreground="#C6CCD3" Margin="7,0,0,0" VerticalAlignment="Center" />
-                                    </StackPanel>
-                                </Border>
-                            </StackPanel>
-
-                            <Button x:Name="BtnGuidePrepare" Content="先点「一键准备」放行网络" Style="{StaticResource S.BtnPrimary}"
-                                    Margin="0,18,0,0" Click="BtnPrepare_Click" Visibility="Collapsed" />
-                        </StackPanel>
-
-                        <!-- 隐私遮挡：视频是 HwndHost（空域限制），WPF 元素盖不住它，
-                             所以遮挡的做法是「收起视频宿主 + 显示这块面板」；投屏本身不中断。 -->
-                        <!-- 用 Button 而不是 Grid：遮挡必须能用键盘恢复（Enter/空格天然生效），
-                             而且只有可聚焦控件才吃得到统一焦点环。原来只有 MouseLeftButtonUp，
-                             键盘用户被遮挡后自己无法恢复画面（热键存在但界面上没有任何提示）。 -->
-                        <Button x:Name="PrivacyMask" Background="{DynamicResource B.Bg}" Visibility="Collapsed"
-                                BorderThickness="0" Padding="0" Cursor="Hand" Click="PrivacyMask_Click"
-                                FocusVisualStyle="{StaticResource S.FocusVisual}"
-                                AutomationProperties.Name="画面已遮挡，恢复查看"
-                                AutomationProperties.HelpText="按 Enter 或空格恢复画面（也可用 Ctrl+Alt+P）">
-                            <Button.Template>
-                                <ControlTemplate TargetType="Button">
-                                    <Border Background="{TemplateBinding Background}">
-                                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
-                                    </Border>
-                                </ControlTemplate>
-                            </Button.Template>
-                            <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
-                                <Path Width="34" Height="38" Stretch="Uniform" Fill="{DynamicResource B.TextFaint}" HorizontalAlignment="Center"
-                                      Data="M9,10 V7 A7,7 0 0 1 23,7 V10 H26 A2,2 0 0 1 28,12 V26 A2,2 0 0 1 26,28 H6 A2,2 0 0 1 4,26 V12 A2,2 0 0 1 6,10 Z M13,10 H19 V7 A3,3 0 0 0 13,7 Z" />
-                                <TextBlock x:Name="TxtMaskTitle" Text="画面已遮挡" FontSize="17" FontWeight="SemiBold"
-                                           Foreground="{DynamicResource B.Text}" HorizontalAlignment="Center" Margin="0,16,0,0" />
-                                <TextBlock x:Name="TxtMaskHint" Text="投屏仍在进行 · 点一下或按 Ctrl+Alt+P 恢复" FontSize="12.5"
-                                           Foreground="{DynamicResource B.TextDim}" HorizontalAlignment="Center" Margin="0,7,0,0" />
-                            </StackPanel>
-                        </Button>
-                    </Grid>
-                </Border>
-
-                <!-- 侧栏：整栏只有一张卡 ——「状态」和它下面的信息区（未连接＝上手引导，已连接＝本次投屏）。
-                     两张卡合成一张，是为了少一层边框和一条 12px 间距；行号只剩 2 行（卡片 + 已停用的 adb），
-                     别再按旧编号填 Grid.Row。 -->
-                <Grid Grid.Column="1">
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="*" />
-                    </Grid.RowDefinitions>
-
-                    <!-- 状态 + 信息区 -->
-                    <Border Grid.Row="0" Style="{StaticResource S.Card}" Padding="16,15" Margin="0,0,0,12">
-                        <StackPanel>
+                        <!-- 舞台顶栏：视频是 HwndHost，WPF 元素盖不住它，所以单独占一行 -->
+                        <Border x:Name="StageTopBar" Grid.Row="0" Background="{DynamicResource B.MediaBarSoft}"
+                                BorderBrush="{DynamicResource B.MediaLine}" BorderThickness="0,0,0,1"
+                                CornerRadius="14,14,0,0" Padding="14,0">
                             <Grid>
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
-                                <StackPanel Grid.Column="0">
-                                    <StackPanel Orientation="Horizontal">
-                                        <Ellipse x:Name="DotState" Width="8" Height="8" Fill="{DynamicResource B.TextFaint}" VerticalAlignment="Center" />
-                                        <TextBlock x:Name="TxtStateBig" Text="未开启" FontSize="19" FontWeight="SemiBold"
-                                                   TextWrapping="Wrap" Margin="9,0,0,0" VerticalAlignment="Center" />
-                                    </StackPanel>
-                                    <TextBlock x:Name="TxtStateSub" Style="{DynamicResource S.Desc}" Margin="17,5,0,0" MaxWidth="200" />
-                                </StackPanel>
-                                <ToggleButton x:Name="SwMirror" Grid.Column="1" Style="{StaticResource S.Switch}" VerticalAlignment="Top"
-                                              Margin="10,2,0,0" AutomationProperties.Name="接收端开关"
-                                              Checked="SwMirror_Changed" Unchecked="SwMirror_Changed" />
-                            </Grid>
 
-                            <!-- 内容归属：一行小字就够（原来是带边框的一块，白占一层） -->
-                            <Grid Margin="0,13,0,0">
-                                <TextBlock Text="内容归属" Style="{DynamicResource S.Caption}" VerticalAlignment="Center" />
-                                <TextBlock x:Name="TxtOwner" Style="{DynamicResource S.Value}" FontSize="12" HorizontalAlignment="Right"
-                                           VerticalAlignment="Center" MaxWidth="170"
-                                           ToolTip="截屏与录像会加密存入这个账号的库" />
-                            </Grid>
-
-                            <TextBlock x:Name="TxtHotspot" Style="{DynamicResource S.Desc}" Foreground="{DynamicResource B.Warn}"
-                                       Margin="0,12,0,0" Visibility="Collapsed" />
-
-                            <!-- 手机搜不到设备时的自愈入口（等价于"重启程序"那一下） -->
-                            <Button x:Name="BtnRefreshBroadcast" Style="{DynamicResource S.Ghost}" Margin="0,8,0,0"
-                                    HorizontalAlignment="Stretch" Click="BtnRefreshBroadcast_Click" Visibility="Collapsed"
-                                    AutomationProperties.Name="刷新广播"
-                                    ToolTip="重建接收广播：手机上重新搜索本机即可（投屏进行中不会执行）">
-                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
-                                    <TextBlock Text="&#xE72C;" FontFamily="{DynamicResource F.Icon}" FontSize="12" VerticalAlignment="Center" />
-                                    <TextBlock Text="刷新广播" FontSize="12.5" Margin="7,0,0,0" VerticalAlignment="Center" />
-                                </StackPanel>
-                            </Button>
-
-                            <!-- 只在真的出问题时才出现对应动作，正常状态保持干净 -->
-                            <StackPanel x:Name="ActionsRow" Orientation="Horizontal" Margin="0,13,0,0" Visibility="Collapsed">
-                                <Button x:Name="BtnFixAction" Style="{DynamicResource S.BtnPrimary}" Click="BtnFixAction_Click" />
-                                <Button x:Name="BtnLatency" Style="{DynamicResource S.Btn}" Margin="8,0,0,0" Click="BtnLatency_Click"
-                                        Content="延迟优先" Visibility="Collapsed"
-                                        ToolTip="检测到画面推进跟不上时出现：向手机申请更低码率并实时播放" />
-                            </StackPanel>
-
-                            <Border Style="{StaticResource S.Divider}" Margin="0,14,0,0" />
-
-                            <!-- 未连接：上手引导（自动轮播，圆点可点）。标题与"几 / 几"页码去掉：
-                                 卡里只有一条提示，最省地方 -->
-                            <StackPanel x:Name="TipsCard" Margin="0,13,0,0">
-                                <Grid Height="96" ClipToBounds="True">
-                                    <StackPanel x:Name="TipPageHost" VerticalAlignment="Center">
-                                        <StackPanel.RenderTransform>
-                                            <TranslateTransform x:Name="TipSlide" Y="0" />
-                                        </StackPanel.RenderTransform>
-                                        <StackPanel Orientation="Horizontal">
-                                            <Border Width="30" Height="30" CornerRadius="15" Background="{DynamicResource B.AccentSoft}">
-                                                <Path x:Name="TipIcon" Width="16" Height="16" Stretch="Uniform"
-                                                      Stroke="{DynamicResource B.Accent}" StrokeThickness="1.6"
-                                                      StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"
-                                                      HorizontalAlignment="Center" VerticalAlignment="Center" />
-                                            </Border>
-                                            <TextBlock x:Name="TxtTipTitle" FontSize="13" FontWeight="SemiBold" Margin="11,0,0,0" VerticalAlignment="Center" />
-                                        </StackPanel>
-                                        <TextBlock x:Name="TxtTipBody" Style="{DynamicResource S.Desc}" Margin="0,10,0,0" LineHeight="19" />
-                                    </StackPanel>
+                                <Grid Grid.Column="0" ClipToBounds="True" Margin="0,0,10,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <Ellipse x:Name="DotStage" Grid.Column="0" Width="6" Height="6" Fill="{DynamicResource B.MediaTextDim}"
+                                             VerticalAlignment="Center" RenderTransformOrigin="0.5,0.5">
+                                        <Ellipse.RenderTransform>
+                                            <ScaleTransform x:Name="DotStageScale" ScaleX="1" ScaleY="1" />
+                                        </Ellipse.RenderTransform>
+                                    </Ellipse>
+                                    <TextBlock x:Name="TxtStageTitle" Grid.Column="1" Text="本机画面" FontSize="11.5" FontWeight="SemiBold"
+                                               Foreground="{DynamicResource B.MediaText}" Margin="9,0,0,0" VerticalAlignment="Center" />
+                                    <TextBlock x:Name="TxtStageSub" Grid.Column="2" Text="等待设备投屏" FontSize="11"
+                                               Foreground="{DynamicResource B.MediaTextDim}" Margin="9,0,0,0" VerticalAlignment="Center"
+                                               TextTrimming="CharacterEllipsis" />
                                 </Grid>
 
-                                <StackPanel x:Name="TipDots" Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,2,0,0" />
+                                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                                    <Button x:Name="BtnStageFit" Style="{StaticResource S.BtnMedia}" Content="适应"
+                                            Padding="10,4" FontSize="11" Click="BtnStageFit_Click"
+                                            AutomationProperties.Name="切换画面适配方式"
+                                            ToolTip="在 适应 / 铺满 / 拉伸 / 原始 之间切换" />
+                                    <Button x:Name="BtnStageZoomOut" Style="{StaticResource S.BtnStage}" Content="&#xE738;"
+                                            Margin="8,0,0,0" Click="BtnStageZoomOut_Click"
+                                            AutomationProperties.Name="缩小画面" ToolTip="缩小画面" />
+                                    <TextBlock x:Name="TxtStageZoom" Text="100%" FontFamily="{DynamicResource F.Mono}" FontSize="10.5"
+                                               Foreground="{DynamicResource B.MediaTextDim}" VerticalAlignment="Center"
+                                               Margin="6,0,6,0" MinWidth="34" TextAlignment="Center"
+                                               AutomationProperties.AutomationId="StageZoomText" />
+                                    <Button x:Name="BtnStageZoomIn" Style="{StaticResource S.BtnStage}" Content="&#xE710;"
+                                            Click="BtnStageZoomIn_Click"
+                                            AutomationProperties.Name="放大画面" ToolTip="放大画面" />
+                                    <Border Width="1" Height="16" Background="{DynamicResource B.MediaLine}" Margin="10,0,8,0" />
+                                    <Button x:Name="BtnStageFullscreen" Style="{StaticResource S.BtnStage}" Content="&#xE740;"
+                                            Click="BtnStageFullscreen_Click"
+                                            AutomationProperties.Name="全屏" ToolTip="全屏（F11）" />
+                                </StackPanel>
+                            </Grid>
+                        </Border>
+
+                        <Grid Grid.Row="1">
+                            <Rectangle Fill="{DynamicResource B.StageWash}" />
+
+                            <!-- 画面区布局：左列＝主画面，右列＝其余各路格子。
+                                 各路的画面宿主（MultiViewTile）由 SyncMultiView 动态加进来。 -->
+                            <Grid x:Name="StageLayout">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition x:Name="StageMainColumn" Width="*" />
+                                    <ColumnDefinition x:Name="StageTileColumn" Width="0" />
+                                </Grid.ColumnDefinitions>
+                                <ctrl:CompositionVideoHost x:Name="MiracastHost" Grid.Column="0" Visibility="Collapsed" />
+                            </Grid>
+
+                            <!-- ================= 待机 ================= -->
+                            <StackPanel x:Name="StageGuide" Panel.ZIndex="2" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                        Margin="24,0,24,0">
+                                <local:PhoneSpriteView x:Name="GuideModel" Width="250" Height="320" Margin="0,-14,0,0" />
+
+                                <TextBlock x:Name="TxtGuideTitle" Text="等待手机镜像" FontSize="20" FontWeight="SemiBold"
+                                           HorizontalAlignment="Center" Margin="0,4,0,0" />
+                                <TextBlock x:Name="TxtGuideHint" Text="手机与本机连同一个 Wi-Fi，即可投屏"
+                                           Style="{DynamicResource S.Desc}" FontSize="12.5"
+                                           HorizontalAlignment="Center" Margin="0,8,0,0" />
+
+                                <!-- 三步就位：比一整句话好扫 -->
+                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,22,0,0"
+                                            ToolTip="手机下拉快捷面板 →「无线投屏 / 投射屏幕」→ 在设备列表里选择本机名称">
+                                    <StackPanel Orientation="Horizontal" Margin="0,0,20,0">
+                                        <TextBlock Text="1" FontFamily="{DynamicResource F.Mono}" FontSize="10.5"
+                                                   Foreground="{DynamicResource B.TextFaint}" VerticalAlignment="Center" />
+                                        <TextBlock Text="同一 Wi-Fi" FontSize="11.5" Foreground="{DynamicResource B.TextDim}"
+                                                   Margin="7,0,0,0" VerticalAlignment="Center" />
+                                    </StackPanel>
+                                    <StackPanel Orientation="Horizontal" Margin="0,0,20,0">
+                                        <TextBlock Text="2" FontFamily="{DynamicResource F.Mono}" FontSize="10.5"
+                                                   Foreground="{DynamicResource B.TextFaint}" VerticalAlignment="Center" />
+                                        <TextBlock Text="下拉「无线投屏」" FontSize="11.5" Foreground="{DynamicResource B.TextDim}"
+                                                   Margin="7,0,0,0" VerticalAlignment="Center" />
+                                    </StackPanel>
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="3" FontFamily="{DynamicResource F.Mono}" FontSize="10.5"
+                                                   Foreground="{DynamicResource B.TextFaint}" VerticalAlignment="Center" />
+                                        <TextBlock Text="选中本机名称" FontSize="11.5" Foreground="{DynamicResource B.TextDim}"
+                                                   Margin="7,0,0,0" VerticalAlignment="Center" />
+                                    </StackPanel>
+                                </StackPanel>
+
+                                <TextBlock Text="安卓 → 无线投屏 · iPhone / iPad → 隔空播放" FontSize="10.5"
+                                           Foreground="{DynamicResource B.TextFaint}" HorizontalAlignment="Center"
+                                           Margin="0,14,0,0" Opacity="0.85" />
+
+                                <Button x:Name="BtnGuidePrepare" Content="先点「一键准备」放行网络" Style="{StaticResource S.BtnPrimary}"
+                                        Margin="0,18,0,0" Padding="18,8" Click="BtnPrepare_Click" Visibility="Collapsed" />
                             </StackPanel>
 
-                            <!-- 已连接：本次投屏 -->
-                            <StackPanel x:Name="SessionCard" Margin="0,13,0,0" Visibility="Collapsed">
+                            <!-- ================= 连接中 ================= -->
+                            <StackPanel x:Name="StageConnecting" Panel.ZIndex="1" Visibility="Collapsed" HorizontalAlignment="Center"
+                                        VerticalAlignment="Center">
+                                <Grid Width="46" Height="46" HorizontalAlignment="Center" RenderTransformOrigin="0.5,0.5">
+                                    <Grid.RenderTransform>
+                                        <RotateTransform x:Name="ConnSpin" Angle="0" />
+                                    </Grid.RenderTransform>
+                                    <Ellipse Stroke="{DynamicResource B.Line}" StrokeThickness="2" />
+                                    <Path Stroke="{DynamicResource B.Accent}" StrokeThickness="2" StrokeStartLineCap="Round"
+                                          StrokeEndLineCap="Round" Data="M23,2 A21,21 0 0 1 44,23" />
+                                </Grid>
+                                <TextBlock x:Name="TxtConnectingTitle" Text="手机正在连接" FontSize="17" FontWeight="SemiBold"
+                                           Foreground="{DynamicResource B.Text}" HorizontalAlignment="Center" Margin="0,18,0,0" />
+                                <TextBlock x:Name="TxtConnectingHint" Text="正在建立无线镜像连接…" FontSize="12.5"
+                                           Foreground="{DynamicResource B.TextDim}" HorizontalAlignment="Center" Margin="0,7,0,0" />
+                            </StackPanel>
+
+                            <!-- 隐私遮挡 -->
+                            <Button x:Name="PrivacyMask" Panel.ZIndex="3" Background="{DynamicResource B.Bg}" Visibility="Collapsed"
+                                    BorderThickness="0" Padding="0" Cursor="Hand" Click="PrivacyMask_Click"
+                                    FocusVisualStyle="{StaticResource S.FocusVisual}"
+                                    AutomationProperties.Name="画面已遮挡，恢复查看"
+                                    AutomationProperties.HelpText="按 Enter 或空格恢复画面（也可用 Ctrl+Alt+P）">
+                                <Button.Template>
+                                    <ControlTemplate TargetType="Button">
+                                        <Border Background="{TemplateBinding Background}">
+                                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                        </Border>
+                                    </ControlTemplate>
+                                </Button.Template>
+                                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                                    <Path Width="34" Height="38" Stretch="Uniform" Fill="{DynamicResource B.TextFaint}"
+                                          HorizontalAlignment="Center"
+                                          Data="M9,10 V7 A7,7 0 0 1 23,7 V10 H26 A2,2 0 0 1 28,12 V26 A2,2 0 0 1 26,28 H6 A2,2 0 0 1 4,26 V12 A2,2 0 0 1 6,10 Z M13,10 H19 V7 A3,3 0 0 0 13,7 Z" />
+                                    <TextBlock x:Name="TxtMaskTitle" Text="画面已遮挡" FontSize="17" FontWeight="SemiBold"
+                                               Foreground="{DynamicResource B.Text}" HorizontalAlignment="Center" Margin="0,16,0,0" />
+                                    <TextBlock x:Name="TxtMaskHint" Text="投屏仍在进行 · 点一下或按 Ctrl+Alt+P 恢复" FontSize="12.5"
+                                               Foreground="{DynamicResource B.TextDim}" HorizontalAlignment="Center" Margin="0,7,0,0" />
+                                </StackPanel>
+                            </Button>
+                        </Grid>
+                    </Grid>
+                </Border>
+
+                <!-- ============ 侧栏 ============ -->
+                <ScrollViewer x:Name="SideScroll" Grid.Column="1" VerticalScrollBarVisibility="Auto"
+                              HorizontalScrollBarVisibility="Disabled">
+                    <ScrollViewer.RenderTransform>
+                        <TranslateTransform x:Name="SideSlide" X="0" Y="0" />
+                    </ScrollViewer.RenderTransform>
+                    <StackPanel>
+                        <Border Style="{StaticResource S.Card}" Padding="16,15">
+                            <StackPanel>
                                 <Grid>
-                                    <TextBlock Text="本次投屏" Style="{DynamicResource S.Caption}" VerticalAlignment="Center" />
-                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
-                                        <Ellipse x:Name="DotSession" Width="7" Height="7" Fill="{DynamicResource B.Ok}" VerticalAlignment="Center" />
-                                        <TextBlock x:Name="TxtSessionTime" FontSize="11.5" Margin="6,0,0,0" Foreground="{DynamicResource B.TextDim}"
-                                                   FontFamily="{DynamicResource F.Mono}" />
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Grid.Column="0">
+                                        <StackPanel Orientation="Horizontal">
+                                            <Ellipse x:Name="DotState" Width="8" Height="8" Fill="{DynamicResource B.TextFaint}"
+                                                     VerticalAlignment="Center" />
+                                            <TextBlock x:Name="TxtStateBig" Text="未开启" FontSize="19" FontWeight="SemiBold"
+                                                       TextWrapping="Wrap" Margin="9,0,0,0" VerticalAlignment="Center" />
+                                        </StackPanel>
+                                        <TextBlock x:Name="TxtStateSub" Style="{DynamicResource S.Desc}" Margin="17,5,0,0" MaxWidth="200" />
                                     </StackPanel>
+                                    <ToggleButton x:Name="SwMirror" Grid.Column="1" Style="{StaticResource S.Switch}"
+                                                  VerticalAlignment="Top" Margin="10,2,0,0" AutomationProperties.Name="接收端开关"
+                                                  Checked="SwMirror_Changed" Unchecked="SwMirror_Changed" />
                                 </Grid>
 
                                 <Grid Margin="0,13,0,0">
-                                    <TextBlock Text="画质" Style="{DynamicResource S.Caption}" />
-                                    <TextBlock x:Name="TxtSessionQuality" Style="{DynamicResource S.Value}" FontSize="12" HorizontalAlignment="Right" />
-                                </Grid>
-                                <Grid Margin="0,9,0,0">
-                                    <TextBlock Text="画面" Style="{DynamicResource S.Caption}" />
-                                    <TextBlock x:Name="TxtSessionHealth" Style="{DynamicResource S.Value}" FontSize="12" HorizontalAlignment="Right" />
-                                </Grid>
-                                <Grid Margin="0,9,0,0">
-                                    <TextBlock Text="已保存" Style="{DynamicResource S.Caption}" />
-                                    <TextBlock x:Name="TxtSessionSaved" Style="{DynamicResource S.Value}" FontSize="12" HorizontalAlignment="Right" />
+                                    <TextBlock Text="内容归属" Style="{DynamicResource S.Caption}" VerticalAlignment="Center" />
+                                    <TextBlock x:Name="TxtOwner" Style="{DynamicResource S.Value}" FontSize="12" HorizontalAlignment="Right"
+                                               VerticalAlignment="Center" MaxWidth="170"
+                                               ToolTip="截屏与录像会加密存入这个账号的库" />
                                 </Grid>
 
-                                <Border Style="{StaticResource S.Divider}" Margin="0,13,0,0" />
-                                <Button Style="{DynamicResource S.Ghost}" Margin="0,6,0,-6" HorizontalAlignment="Stretch"
-                                        Click="BtnOpenVault_Click" AutomationProperties.Name="打开我的库">
+                                <TextBlock x:Name="TxtHotspot" Style="{DynamicResource S.Desc}" Foreground="{DynamicResource B.Warn}"
+                                           Margin="0,12,0,0" Visibility="Collapsed" />
+
+                                <Button x:Name="BtnRefreshBroadcast" Style="{DynamicResource S.Ghost}" Margin="0,8,0,0"
+                                        HorizontalAlignment="Stretch" Click="BtnRefreshBroadcast_Click" Visibility="Collapsed"
+                                        AutomationProperties.Name="刷新广播"
+                                        ToolTip="重建接收广播：手机上重新搜索本机即可（投屏进行中不会执行）">
                                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
-                                        <TextBlock Text="&#xE8F1;" FontFamily="{DynamicResource F.Icon}" FontSize="12" VerticalAlignment="Center" />
-                                        <TextBlock Text="打开我的库" FontSize="12.5" Margin="7,0,0,0" VerticalAlignment="Center" />
+                                        <TextBlock Text="&#xE72C;" FontFamily="{DynamicResource F.Icon}" FontSize="12" VerticalAlignment="Center" />
+                                        <TextBlock Text="刷新广播" FontSize="12.5" Margin="7,0,0,0" VerticalAlignment="Center" />
                                     </StackPanel>
                                 </Button>
+
+                                <StackPanel x:Name="ActionsRow" Orientation="Horizontal" Margin="0,13,0,0" Visibility="Collapsed">
+                                    <Button x:Name="BtnFixAction" Style="{DynamicResource S.BtnPrimary}" Click="BtnFixAction_Click" />
+                                    <Button x:Name="BtnLatency" Style="{DynamicResource S.Btn}" Margin="8,0,0,0" Click="BtnLatency_Click"
+                                            Content="延迟优先" Visibility="Collapsed"
+                                            ToolTip="检测到画面推进跟不上时出现：向手机申请更低码率并实时播放" />
+                                </StackPanel>
+
+                                <Border Style="{StaticResource S.Divider}" Margin="0,14,0,0" />
+
+                                <StackPanel x:Name="TipsCard" Margin="0,13,0,0">
+                                    <StackPanel.RenderTransform>
+                                        <TranslateTransform x:Name="TipsSlideIn" X="0" Y="0" />
+                                    </StackPanel.RenderTransform>
+                                    <Grid Height="96" ClipToBounds="True">
+                                        <StackPanel x:Name="TipPageHost" VerticalAlignment="Center">
+                                            <StackPanel.RenderTransform>
+                                                <TranslateTransform x:Name="TipSlide" Y="0" />
+                                            </StackPanel.RenderTransform>
+                                            <StackPanel Orientation="Horizontal">
+                                                <Border Width="30" Height="30" CornerRadius="15" Background="{DynamicResource B.SurfaceHi}"
+                                                        BorderBrush="{DynamicResource B.Line}" BorderThickness="1">
+                                                    <Path x:Name="TipIcon" Width="16" Height="16" Stretch="Uniform"
+                                                          Stroke="{DynamicResource B.TextDim}" StrokeThickness="1.6"
+                                                          StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"
+                                                          HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                                </Border>
+                                                <TextBlock x:Name="TxtTipTitle" FontSize="13" FontWeight="SemiBold" Margin="11,0,0,0"
+                                                           VerticalAlignment="Center" />
+                                            </StackPanel>
+                                            <TextBlock x:Name="TxtTipBody" Style="{DynamicResource S.Desc}" Margin="0,10,0,0" LineHeight="19" />
+                                        </StackPanel>
+                                    </Grid>
+                                    <StackPanel x:Name="TipDots" Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,2,0,0" />
+                                </StackPanel>
+
+                                <StackPanel x:Name="SessionCard" Margin="0,13,0,0" Visibility="Collapsed">
+                                    <StackPanel.RenderTransform>
+                                        <TranslateTransform x:Name="SessionSlideIn" X="0" Y="0" />
+                                    </StackPanel.RenderTransform>
+                                    <Grid>
+                                        <TextBlock Text="本次投屏" Style="{DynamicResource S.Caption}" VerticalAlignment="Center" />
+                                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                                            <Ellipse x:Name="DotSession" Width="7" Height="7" Fill="{DynamicResource B.Ok}" VerticalAlignment="Center" RenderTransformOrigin="0.5,0.5">
+                                                <Ellipse.RenderTransform>
+                                                    <ScaleTransform x:Name="DotSessionScale" ScaleX="1" ScaleY="1" />
+                                                </Ellipse.RenderTransform>
+                                            </Ellipse>
+                                            <TextBlock x:Name="TxtSessionTime" FontSize="11.5" Margin="6,0,0,0"
+                                                       Foreground="{DynamicResource B.TextDim}" FontFamily="{DynamicResource F.Mono}" />
+                                        </StackPanel>
+                                    </Grid>
+
+                                    <StackPanel Margin="0,12,0,0">
+                                        <Border Style="{StaticResource S.Stat}" Margin="0,0,0,6">
+                                            <Grid>
+                                                <TextBlock Text="画质" Style="{DynamicResource S.Caption}" VerticalAlignment="Center" />
+                                                <TextBlock x:Name="TxtSessionQuality" Text="—" Style="{DynamicResource S.Value}"
+                                                           FontSize="12" HorizontalAlignment="Right" VerticalAlignment="Center" />
+                                            </Grid>
+                                        </Border>
+                                        <Border Style="{StaticResource S.Stat}" Margin="0,0,0,6">
+                                            <Grid>
+                                                <TextBlock Text="画面" Style="{DynamicResource S.Caption}" VerticalAlignment="Center" />
+                                                <TextBlock x:Name="TxtSessionHealth" Text="—" Style="{DynamicResource S.Value}"
+                                                           FontSize="12" HorizontalAlignment="Right" VerticalAlignment="Center" />
+                                            </Grid>
+                                        </Border>
+                                        <Border Style="{StaticResource S.Stat}">
+                                            <Grid>
+                                                <TextBlock Text="已保存" Style="{DynamicResource S.Caption}" VerticalAlignment="Center" />
+                                                <TextBlock x:Name="TxtSessionSaved" Text="—" Style="{DynamicResource S.Value}"
+                                                           FontSize="11.5" HorizontalAlignment="Right" VerticalAlignment="Center" />
+                                            </Grid>
+                                        </Border>
+                                    </StackPanel>
+
+                                    <Border Style="{StaticResource S.Divider}" Margin="0,12,0,0" />
+                                    <Button Style="{DynamicResource S.Ghost}" Margin="0,6,0,-8" HorizontalAlignment="Stretch"
+                                            Click="BtnOpenVault_Click" AutomationProperties.Name="打开我的库">
+                                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                            <TextBlock Text="&#xE8F1;" FontFamily="{DynamicResource F.Icon}" FontSize="12" VerticalAlignment="Center" />
+                                            <TextBlock Text="打开我的库" FontSize="12.5" Margin="7,0,0,0" VerticalAlignment="Center" />
+                                        </StackPanel>
+                                    </Button>
+                                </StackPanel>
                             </StackPanel>
+                        </Border>
+
+                        <!-- 电脑控制手机（安卓 · adb） -->
+                        <StackPanel x:Name="AdbSection">
+                            <Border x:Name="AdbCard" Style="{DynamicResource S.Card}" Padding="16,14" Margin="0,12,0,0"
+                                    VerticalAlignment="Top">
+                                <StackPanel>
+                                    <Grid>
+                                        <TextBlock Text="电脑控制手机" Style="{DynamicResource S.Caption}" VerticalAlignment="Center" />
+                                        <ToggleButton x:Name="SwAdbMouse" Style="{DynamicResource S.Switch}" HorizontalAlignment="Right"
+                                                      AutomationProperties.Name="电脑控制手机"
+                                                      AutomationProperties.AutomationId="AdbMouseToggle"
+                                                      Checked="SwAdbMouse_Changed" Unchecked="SwAdbMouse_Changed" />
+                                    </Grid>
+
+                                    <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                                        <Ellipse x:Name="DotAdb" Width="7" Height="7" Fill="{DynamicResource B.TextFaint}"
+                                                 VerticalAlignment="Top" Margin="0,5,0,0" />
+                                        <TextBlock x:Name="TxtAdbState" Style="{DynamicResource S.Desc}"
+                                                   Margin="8,0,0,0" MaxWidth="198" Text="未连接（打开开关会自动发现手机）"
+                                                   AutomationProperties.AutomationId="AdbStatus" />
+                                    </StackPanel>
+
+                                    <TextBlock x:Name="TxtAdbInjected" Style="{DynamicResource S.Mono}" FontSize="11"
+                                               Margin="0,8,0,0" Text="已发送 0 次"
+                                               AutomationProperties.AutomationId="AdbInjected" />
+
+                                    <TextBlock x:Name="TxtAdbHint" Style="{DynamicResource S.Desc}" Margin="0,7,0,0"
+                                               Text="投屏后在画面上点击＝点按手机；下面这些键直接按到手机上" />
+
+                                    <UniformGrid x:Name="PhoneKeyPad" Columns="4" Margin="0,10,0,0">
+                                        <Button Content="返回" Tag="Back" Margin="0,0,6,6" Padding="0,6" FontSize="11.5"
+                                                Style="{DynamicResource S.Btn}" Click="BtnPhoneKey_Click"
+                                                AutomationProperties.AutomationId="PhoneKeyBack"
+                                                AutomationProperties.Name="手机返回键" ToolTip="手机上的返回" />
+                                        <Button Content="主页" Tag="Home" Margin="0,0,6,6" Padding="0,6" FontSize="11.5"
+                                                Style="{DynamicResource S.Btn}" Click="BtnPhoneKey_Click"
+                                                AutomationProperties.AutomationId="PhoneKeyHome"
+                                                AutomationProperties.Name="手机主页键" ToolTip="回到手机桌面" />
+                                        <Button Content="任务" Tag="Recents" Margin="0,0,6,6" Padding="0,6" FontSize="11.5"
+                                                Style="{DynamicResource S.Btn}" Click="BtnPhoneKey_Click"
+                                                AutomationProperties.AutomationId="PhoneKeyRecents"
+                                                AutomationProperties.Name="手机最近任务键" ToolTip="手机的多任务" />
+                                        <Button Content="通知" Tag="Notifications" Margin="0,0,0,6" Padding="0,6" FontSize="11.5"
+                                                Style="{DynamicResource S.Btn}" Click="BtnPhoneKey_Click"
+                                                AutomationProperties.AutomationId="PhoneKeyNotifications"
+                                                AutomationProperties.Name="手机通知栏" ToolTip="下拉手机的通知栏" />
+                                        <Button Content="音量 −" Tag="VolumeDown" Margin="0,0,6,6" Padding="0,6" FontSize="11.5"
+                                                Style="{DynamicResource S.Btn}" Click="BtnPhoneKey_Click"
+                                                AutomationProperties.AutomationId="PhoneKeyVolumeDown"
+                                                AutomationProperties.Name="手机音量减" />
+                                        <Button Content="音量 +" Tag="VolumeUp" Margin="0,0,6,6" Padding="0,6" FontSize="11.5"
+                                                Style="{DynamicResource S.Btn}" Click="BtnPhoneKey_Click"
+                                                AutomationProperties.AutomationId="PhoneKeyVolumeUp"
+                                                AutomationProperties.Name="手机音量加" />
+                                        <Button Content="静音" Tag="VolumeMute" Margin="0,0,6,6" Padding="0,6" FontSize="11.5"
+                                                Style="{DynamicResource S.Btn}" Click="BtnPhoneKey_Click"
+                                                AutomationProperties.AutomationId="PhoneKeyMute"
+                                                AutomationProperties.Name="手机静音" />
+                                        <Button Content="电源" Tag="Power" Margin="0,0,0,6" Padding="0,6" FontSize="11.5"
+                                                Style="{DynamicResource S.Btn}" Click="BtnPhoneKey_Click"
+                                                AutomationProperties.AutomationId="PhoneKeyPower"
+                                                AutomationProperties.Name="手机电源键" ToolTip="按一下＝亮屏 / 息屏" />
+                                        <Button Content="亮屏" Tag="WakeUp" Margin="0,0,6,0" Padding="0,6" FontSize="11.5"
+                                                Style="{DynamicResource S.Btn}" Click="BtnPhoneKey_Click"
+                                                AutomationProperties.AutomationId="PhoneKeyWake"
+                                                AutomationProperties.Name="手机亮屏" />
+                                        <Button Content="息屏" Tag="Sleep" Margin="0,0,6,0" Padding="0,6" FontSize="11.5"
+                                                Style="{DynamicResource S.Btn}" Click="BtnPhoneKey_Click"
+                                                AutomationProperties.AutomationId="PhoneKeySleep"
+                                                AutomationProperties.Name="手机息屏" />
+                                        <Button Content="菜单" Tag="Menu" Margin="0,0,6,0" Padding="0,6" FontSize="11.5"
+                                                Style="{DynamicResource S.Btn}" Click="BtnPhoneKey_Click"
+                                                AutomationProperties.AutomationId="PhoneKeyMenu"
+                                                AutomationProperties.Name="手机菜单键" />
+                                        <Button Content="粘贴" Tag="Paste" Padding="0,6" FontSize="11.5"
+                                                Style="{DynamicResource S.Btn}" Click="BtnPhoneKey_Click"
+                                                AutomationProperties.AutomationId="PhoneKeyPaste"
+                                                AutomationProperties.Name="手机粘贴"
+                                                ToolTip="把手机剪贴板里的内容粘到手机上当前的光标位置" />
+                                    </UniformGrid>
+
+                                    <Button x:Name="BtnAdbConnect" Content="配对 / 其它手机…" Style="{DynamicResource S.Btn}"
+                                            Margin="0,10,0,0" Padding="10,7" FontSize="11.5" Click="BtnAdbConnect_Click"
+                                            AutomationProperties.Name="配对 / 其它手机…（配对或连接手机）"
+                                            AutomationProperties.AutomationId="AdbOpenButton"
+                                            ToolTip="平时不用点这里：手机打开「无线调试」后，打开上面的开关就会自动连上。首次在一台新手机上用时才需要点进来填一次配对码" />
+                                </StackPanel>
+                            </Border>
                         </StackPanel>
-                    </Border>
+                    </StackPanel>
+                </ScrollViewer>
 
-                    <!-- 电脑控制手机（安卓 · adb）：在投屏画面上直接操作手机。
-                         无线调试，首次在一台新手机上要一次配对码，之后打开开关即连。
-                         外面套一层滚动：窗口被拉小（最小 880×470）时内容也不会被裁掉、够得着。 -->
-                    <ScrollViewer x:Name="AdbScroll" Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-                    <Border x:Name="AdbCard" Style="{DynamicResource S.Card}" Padding="16,14"
-                            Margin="0,12,0,0" VerticalAlignment="Top">
-                        <StackPanel>
-                            <Grid>
-                                <TextBlock Text="电脑控制手机" Style="{DynamicResource S.Caption}"
-                                           VerticalAlignment="Center" />
-                                <ToggleButton x:Name="SwAdbMouse" Style="{DynamicResource S.Switch}" HorizontalAlignment="Right"
-                                              AutomationProperties.Name="电脑控制手机"
-                                              AutomationProperties.AutomationId="AdbMouseToggle"
-                                              Checked="SwAdbMouse_Changed" Unchecked="SwAdbMouse_Changed" />
-                            </Grid>
-
-                            <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
-                                <Ellipse x:Name="DotAdb" Width="7" Height="7" Fill="{DynamicResource B.TextFaint}"
-                                         VerticalAlignment="Top" Margin="0,5,0,0" />
-                                <TextBlock x:Name="TxtAdbState" Style="{DynamicResource S.Desc}"
-                                           Margin="8,0,0,0" MaxWidth="198" Text="未连接（打开开关会自动发现手机）"
-                                           AutomationProperties.AutomationId="AdbStatus" />
-                            </StackPanel>
-
-                            <TextBlock x:Name="TxtAdbInjected" Style="{DynamicResource S.Mono}" FontSize="11"
-                                       Margin="0,8,0,0" Text="已发送 0 次"
-                                       AutomationProperties.AutomationId="AdbInjected" />
-
-                            <TextBlock x:Name="TxtAdbHint" Style="{DynamicResource S.Desc}" Margin="0,7,0,0"
-                                       Text="投屏后在画面上点击＝点按手机；下面这些键直接按到手机上" />
-
-                            <!-- 系统键：只放"任何安卓都认"的那些；按钮的 Tag 就是 Core 里的 AndroidKey 名。
-                                 用 UniformGrid 固定 4 列：WrapPanel 的列数随宽度浮动，侧栏窄的时候会掉成一行一个。 -->
-                            <UniformGrid x:Name="PhoneKeyPad" Columns="4" Margin="0,10,0,0">
-                                <Button Content="返回" Tag="Back" Margin="0,0,6,6" Padding="0,6" FontSize="11.5"
-                                        Style="{DynamicResource S.Btn}" Click="BtnPhoneKey_Click"
-                                        AutomationProperties.AutomationId="PhoneKeyBack"
-                                        AutomationProperties.Name="手机返回键" ToolTip="手机上的返回" />
-                                <Button Content="主页" Tag="Home" Margin="0,0,6,6" Padding="0,6" FontSize="11.5"
-                                        Style="{DynamicResource S.Btn}" Click="BtnPhoneKey_Click"
-                                        AutomationProperties.AutomationId="PhoneKeyHome"
-                                        AutomationProperties.Name="手机主页键" ToolTip="回到手机桌面" />
-                                <Button Content="任务" Tag="Recents" Margin="0,0,6,6" Padding="0,6" FontSize="11.5"
-                                        Style="{DynamicResource S.Btn}" Click="BtnPhoneKey_Click"
-                                        AutomationProperties.AutomationId="PhoneKeyRecents"
-                                        AutomationProperties.Name="手机最近任务键" ToolTip="手机的多任务" />
-                                <Button Content="通知" Tag="Notifications" Margin="0,0,0,6" Padding="0,6" FontSize="11.5"
-                                        Style="{DynamicResource S.Btn}" Click="BtnPhoneKey_Click"
-                                        AutomationProperties.AutomationId="PhoneKeyNotifications"
-                                        AutomationProperties.Name="手机通知栏" ToolTip="下拉手机的通知栏" />
-                                <Button Content="音量 −" Tag="VolumeDown" Margin="0,0,6,6" Padding="0,6" FontSize="11.5"
-                                        Style="{DynamicResource S.Btn}" Click="BtnPhoneKey_Click"
-                                        AutomationProperties.AutomationId="PhoneKeyVolumeDown"
-                                        AutomationProperties.Name="手机音量减" />
-                                <Button Content="音量 +" Tag="VolumeUp" Margin="0,0,6,6" Padding="0,6" FontSize="11.5"
-                                        Style="{DynamicResource S.Btn}" Click="BtnPhoneKey_Click"
-                                        AutomationProperties.AutomationId="PhoneKeyVolumeUp"
-                                        AutomationProperties.Name="手机音量加" />
-                                <Button Content="静音" Tag="VolumeMute" Margin="0,0,6,6" Padding="0,6" FontSize="11.5"
-                                        Style="{DynamicResource S.Btn}" Click="BtnPhoneKey_Click"
-                                        AutomationProperties.AutomationId="PhoneKeyMute"
-                                        AutomationProperties.Name="手机静音" />
-                                <Button Content="电源" Tag="Power" Margin="0,0,0,6" Padding="0,6" FontSize="11.5"
-                                        Style="{DynamicResource S.Btn}" Click="BtnPhoneKey_Click"
-                                        AutomationProperties.AutomationId="PhoneKeyPower"
-                                        AutomationProperties.Name="手机电源键" ToolTip="按一下＝亮屏 / 息屏" />
-                                <Button Content="亮屏" Tag="WakeUp" Margin="0,0,6,0" Padding="0,6" FontSize="11.5"
-                                        Style="{DynamicResource S.Btn}" Click="BtnPhoneKey_Click"
-                                        AutomationProperties.AutomationId="PhoneKeyWake"
-                                        AutomationProperties.Name="手机亮屏" />
-                                <Button Content="息屏" Tag="Sleep" Margin="0,0,6,0" Padding="0,6" FontSize="11.5"
-                                        Style="{DynamicResource S.Btn}" Click="BtnPhoneKey_Click"
-                                        AutomationProperties.AutomationId="PhoneKeySleep"
-                                        AutomationProperties.Name="手机息屏" />
-                                <Button Content="菜单" Tag="Menu" Margin="0,0,6,0" Padding="0,6" FontSize="11.5"
-                                        Style="{DynamicResource S.Btn}" Click="BtnPhoneKey_Click"
-                                        AutomationProperties.AutomationId="PhoneKeyMenu"
-                                        AutomationProperties.Name="手机菜单键" />
-                                <Button Content="粘贴" Tag="Paste" Padding="0,6" FontSize="11.5"
-                                        Style="{DynamicResource S.Btn}" Click="BtnPhoneKey_Click"
-                                        AutomationProperties.AutomationId="PhoneKeyPaste"
-                                        AutomationProperties.Name="手机粘贴"
-                                        ToolTip="把手机剪贴板里的内容粘到手机上当前的光标位置" />
-                            </UniformGrid>
-
-                            <Button x:Name="BtnAdbConnect" Content="配对 / 其它手机…" Style="{DynamicResource S.Btn}"
-                                    Margin="0,10,0,0" Padding="10,7" FontSize="11.5" Click="BtnAdbConnect_Click"
-                                    AutomationProperties.Name="配对 / 其它手机…（配对或连接手机）"
-                                    AutomationProperties.AutomationId="AdbOpenButton"
-                                    ToolTip="平时不用点这里：手机打开「无线调试」后，打开上面的开关就会自动连上。首次在一台新手机上用时才需要点进来填一次配对码" />
-                        </StackPanel>
-                    </Border>
-                    </ScrollViewer>
-
-                </Grid>
-
-                <!-- 电脑控制手机 · 控制条：文字输入与「键盘直通」。
-                     刻意放在画面**外面**：画面是 HwndHost 子窗口，WPF 控件压在它上面既看不见也点不到。 -->
+                <!-- 电脑控制手机 · 控制条：放在画面**外面**（画面是 HwndHost，WPF 控件盖不住） -->
                 <Border x:Name="PhoneBar" Grid.Row="1" Grid.ColumnSpan="2" Style="{DynamicResource S.Card}"
                         Padding="12,9" Margin="0,10,0,0" Visibility="Collapsed"
                         AutomationProperties.AutomationId="PhoneBar">
@@ -497,36 +563,36 @@
             </Grid>
 
             <!-- ============ 底栏 ============ -->
-            <!-- 状态与快捷键提示必须分列：同一格叠放时两者会互相覆盖（状态一长就压住右侧提示） -->
             <Grid x:Name="StatusBarRow" Grid.Row="2" Margin="18,0">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
-                <Border Grid.ColumnSpan="2" VerticalAlignment="Top" Height="1" Background="{DynamicResource B.LineSoft}" Margin="-18,0,-18,0" />
-                <TextBlock x:Name="TxtStatus" Grid.Column="0" Margin="0,0,16,0" VerticalAlignment="Center" FontSize="11.5"
-                           Foreground="{DynamicResource B.TextFaint}" TextTrimming="CharacterEllipsis" Text="就绪"
-                           ToolTip="{Binding Text, RelativeSource={RelativeSource Self}}"
-                           AutomationProperties.AutomationId="StatusText" />
-                <TextBlock x:Name="TxtHint" Grid.Column="1" HorizontalAlignment="Right" VerticalAlignment="Center" FontSize="11.5"
-                           Foreground="{DynamicResource B.TextFaint}" />
+                <Border Grid.ColumnSpan="2" VerticalAlignment="Top" Height="1" Background="{DynamicResource B.LineSoft}"
+                        Margin="-18,0,-18,0" />
+                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,1,16,0">
+                    <Ellipse x:Name="DotStatus" Width="5" Height="5" Fill="{DynamicResource B.Accent}" VerticalAlignment="Center" />
+                    <TextBlock x:Name="TxtStatus" Margin="9,0,0,0" VerticalAlignment="Center" FontSize="11.5"
+                               Foreground="{DynamicResource B.TextFaint}" TextTrimming="CharacterEllipsis" Text="就绪"
+                               ToolTip="{Binding Text, RelativeSource={RelativeSource Self}}"
+                               AutomationProperties.AutomationId="StatusText" />
+                </StackPanel>
+                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                    <TextBlock x:Name="TxtHint" FontSize="11" Foreground="{DynamicResource B.TextFaint}"
+                               VerticalAlignment="Center" Text="F11 全屏 · Ctrl+Alt+P 遮挡" />
+                    <Border Width="1" Height="12" Background="{DynamicResource B.LineSoft}" Margin="10,0" />
+                    <TextBlock x:Name="TxtVersion" Text="v2.2.0" FontFamily="{DynamicResource F.Mono}" FontSize="10.5"
+                               Foreground="{DynamicResource B.TextFaint}" VerticalAlignment="Center" Opacity="0.8" />
+                </StackPanel>
             </Grid>
 
             <!-- ============ 启动/等待遮罩 ============ -->
             <Grid x:Name="BusyOverlay" Grid.Row="0" Grid.RowSpan="3" Background="{DynamicResource B.BusyOverlay}">
                 <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
                     <Grid Width="44" Height="44" HorizontalAlignment="Center" RenderTransformOrigin="0.5,0.5">
-                        <Grid.RenderTransform><RotateTransform x:Name="BusySpin" Angle="0" /></Grid.RenderTransform>
-                        <Grid.Triggers>
-                            <EventTrigger RoutedEvent="Loaded">
-                                <BeginStoryboard>
-                                    <Storyboard RepeatBehavior="Forever">
-                                        <DoubleAnimation Storyboard.TargetName="BusySpin" Storyboard.TargetProperty="Angle"
-                                                         From="0" To="360" Duration="0:0:1.0" />
-                                    </Storyboard>
-                                </BeginStoryboard>
-                            </EventTrigger>
-                        </Grid.Triggers>
+                        <Grid.RenderTransform>
+                            <RotateTransform x:Name="BusySpin" Angle="0" />
+                        </Grid.RenderTransform>
                         <Ellipse Stroke="{DynamicResource B.Line}" StrokeThickness="2" />
                         <Path Stroke="{DynamicResource B.Accent}" StrokeThickness="2" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
                               Data="M22,2 A20,20 0 0 1 42,22" />

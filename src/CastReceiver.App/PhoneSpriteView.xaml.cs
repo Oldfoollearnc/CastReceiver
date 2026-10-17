@@ -1,0 +1,327 @@
+using System.IO;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Media;
+using System.Windows.Media.Animation;
+using System.Windows.Media.Imaging;
+using System.Windows.Threading;
+
+namespace CastReceiver.App;
+
+/// <summary>
+/// 待机页的"产品渲染图"：由 Blender 工程（D:\Blender\projects\phone-anim\vivo_x500pro.blend）
+/// 渲染的转台，合成一张 10×6 雪碧图；这里只取前 31 帧（-25° → +25° 单调变化），
+/// 用鼠标左右位置直接控制旋转角度，上下位置控制轻微视差 —— 比单纯平移更像"真的在转"。
+///
+/// 连接成功后 MainWindow 会调 <see cref="PlayConnectTransition"/>：回到正面、轻微放大、上浮，
+/// 随后整块引导淡出；素材缺失时自动回落到 <see cref="Phone3DView"/>。
+/// </summary>
+public partial class PhoneSpriteView : UserControl
+{
+    private const int Columns = 10;
+    private const int Rows = 6;
+    private const int UsableFrames = 31;        // 0..30：-25° → +25°
+    private const int CenterFrame = UsableFrames / 2;
+
+    private readonly DispatcherTimer _timer;
+    private List<BitmapSource>? _frames;
+    private Phone3DView? _fallback;
+    private bool _initialized;
+    private bool _running;
+    private bool _connecting;
+    private bool _pointerActive;
+    private bool _hasIdlePhase;
+
+    private double _frameIndex = CenterFrame;
+    private int _lastFrame = -1;
+    private double _idlePhase;
+    private double _floatTime;
+    private double _pointerX;
+    private double _pointerY;
+    private DateTime _lastPointerUtc = DateTime.MinValue;
+
+    public PhoneSpriteView()
+    {
+        InitializeComponent();
+        _timer = new DispatcherTimer(DispatcherPriority.Render) { Interval = TimeSpan.FromMilliseconds(33) };
+        _timer.Tick += (_, _) => OnTick();
+
+        Loaded += (_, _) => EnsureInitialized();
+        Unloaded += (_, _) => Stop();
+        IsVisibleChanged += (_, e) => { if (!(bool)e.NewValue) Stop(); else Start(); };
+    }
+
+    private void EnsureInitialized()
+    {
+        if (_initialized) return;
+        _initialized = true;
+
+        try
+        {
+            string path = Path.Combine(AppContext.BaseDirectory, "Assets", "ui", "phone-turntable.png");
+            if (File.Exists(path))
+            {
+                var sheet = new BitmapImage();
+                sheet.BeginInit();
+                sheet.CacheOption = BitmapCacheOption.OnLoad;
+                sheet.CreateOptions = BitmapCreateOptions.IgnoreImageCache;
+                sheet.UriSource = new Uri(path, UriKind.Absolute);
+                sheet.EndInit();
+                sheet.Freeze();
+
+                int cellWidth = sheet.PixelWidth / Columns;
+                int cellHeight = sheet.PixelHeight / Rows;
+                if (cellWidth <= 0 || cellHeight <= 0)
+                {
+                    throw new InvalidOperationException("雪碧图尺寸异常");
+                }
+
+                var frames = new List<BitmapSource>(UsableFrames);
+                for (int i = 0; i < UsableFrames; i++)
+                {
+                    int column = i % Columns;
+                    int row = i / Columns;
+                    var crop = new CroppedBitmap(sheet, new Int32Rect(
+                        column * cellWidth,
+                        row * cellHeight,
+                        cellWidth,
+                        cellHeight));
+                    crop.Freeze();
+                    frames.Add(crop);
+                }
+
+                _frames = frames;
+                Sprite.Source = frames[CenterFrame];
+                Start();
+                return;
+            }
+        }
+        catch
+        {
+            // 素材损坏/读不到：走 3D 兜底
+        }
+
+        _fallback = new Phone3DView();
+        Sprite.Visibility = Visibility.Collapsed;
+        Root.Children.Add(_fallback);
+    }
+
+    /// <summary>开始交互（待机页可见时调用）。</summary>
+    public void Start()
+    {
+        EnsureInitialized();
+        if (_fallback is not null)
+        {
+            _fallback.Start();
+            return;
+        }
+        if (_frames is null)
+        {
+            return;
+        }
+
+        if (!Motion.Enabled)
+        {
+            Sprite.Source = _frames[CenterFrame];
+            return;
+        }
+
+        if (_running) return;
+        _running = true;
+        _connecting = false;
+        _timer.Start();
+    }
+
+    /// <summary>停止（连接中 / 投屏中 / 遮挡时调用）。</summary>
+    public void Stop()
+    {
+        if (_fallback is not null)
+        {
+            _fallback.Stop();
+            return;
+        }
+        if (!_running)
+        {
+            return;
+        }
+
+        _running = false;
+        _connecting = false;
+        _pointerActive = false;
+        _hasIdlePhase = false;
+        _timer.Stop();
+
+        if (_frames is not null)
+        {
+            _frameIndex = CenterFrame;
+            _lastFrame = -1;
+            Sprite.Source = _frames[CenterFrame];
+        }
+        Parallax.X = Parallax.Y = 0;
+        PointerScale.ScaleX = PointerScale.ScaleY = 1;
+        Float.Y = 0;
+        Root.Opacity = 1;
+        EntranceScale.ScaleX = EntranceScale.ScaleY = 1;
+    }
+
+    /// <summary>回到待机初始姿态并开始交互（断开 / 重连后显示引导时调用）。</summary>
+    public void ResetForIdle()
+    {
+        if (_fallback is not null)
+        {
+            _fallback.ResetPointer();
+            _fallback.Start();
+            return;
+        }
+
+        _connecting = false;
+        _pointerActive = false;
+        _hasIdlePhase = false;
+        _pointerX = _pointerY = 0;
+        _frameIndex = CenterFrame;
+        _lastFrame = -1;
+        if (_frames is not null) Sprite.Source = _frames[CenterFrame];
+        Parallax.X = Parallax.Y = 0;
+        PointerScale.ScaleX = PointerScale.ScaleY = 1;
+        Float.Y = 0;
+        Root.Opacity = 1;
+        EntranceScale.ScaleX = EntranceScale.ScaleY = 1;
+        Start();
+    }
+
+    /// <summary>
+    /// 连接成功时的收尾：把手机转回正面、轻微放大/上浮；随后由 MainWindow 把整块引导淡出。
+    /// </summary>
+    public void PlayConnectTransition()
+    {
+        if (_fallback is not null)
+        {
+            _fallback.Stop();
+            return;
+        }
+        if (_frames is null)
+        {
+            return;
+        }
+
+        _connecting = true;
+        _pointerActive = false;
+        _pointerX = _pointerY = 0;
+        _hasIdlePhase = false;
+
+        if (!Motion.Enabled)
+        {
+            _frameIndex = CenterFrame;
+            Sprite.Source = _frames[CenterFrame];
+            return;
+        }
+
+        if (!_running)
+        {
+            _running = true;
+            _timer.Start();
+        }
+    }
+
+    /// <summary>鼠标在舞台上移动时给旋转 + 视差；<paramref name="nx"/> / <paramref name="ny"/> 取 -1…1。</summary>
+    public void SetPointer(double nx, double ny)
+    {
+        _pointerX = Math.Clamp(nx, -1, 1);
+        _pointerY = Math.Clamp(ny, -1, 1);
+        _pointerActive = true;
+        _lastPointerUtc = DateTime.UtcNow;
+    }
+
+    public void ResetPointer()
+    {
+        _pointerActive = false;
+        _hasIdlePhase = false;
+    }
+
+    /// <summary>入场：0.94 倍 + 淡入；然后开始交互。</summary>
+    public void PlayEntrance()
+    {
+        if (_fallback is not null)
+        {
+            _fallback.PlayEntrance();
+            return;
+        }
+        if (!Motion.Enabled)
+        {
+            EntranceScale.ScaleX = EntranceScale.ScaleY = 1;
+            Start();
+            return;
+        }
+
+        EntranceScale.ScaleX = EntranceScale.ScaleY = 1;
+        var ease = new ExponentialEase { Exponent = 5, EasingMode = EasingMode.EaseOut };
+        var animation = new DoubleAnimation(0.94, 1, TimeSpan.FromMilliseconds(620))
+        {
+            EasingFunction = ease,
+            FillBehavior = FillBehavior.Stop,
+        };
+        EntranceScale.BeginAnimation(ScaleTransform.ScaleXProperty, animation);
+        EntranceScale.BeginAnimation(ScaleTransform.ScaleYProperty, animation);
+        Motion.FadeIn(Root, 520, 0, 0);
+        Start();
+    }
+
+    private void OnTick()
+    {
+        if (_frames is null) return;
+
+        bool pointerActive = !_connecting
+                             && _pointerActive
+                             && (DateTime.UtcNow - _lastPointerUtc).TotalSeconds < 1.25;
+
+        double targetFrame;
+        double targetX = 0;
+        double targetY = 0;
+        double targetScale = 1;
+
+        if (_connecting)
+        {
+            // 连接收尾：回正面、放大、上浮
+            targetFrame = CenterFrame;
+            targetScale = 1.10;
+            targetY = -10;
+        }
+        else if (pointerActive)
+        {
+            // 左右直接映射到 -25°…+25°；上下给 6px 视差
+            targetFrame = (_pointerX + 1) * 0.5 * (UsableFrames - 1);
+            targetX = _pointerX * 2.0;
+            targetY = _pointerY * 6.0;
+            targetScale = 1 + Math.Abs(_pointerX) * 0.008;
+            _hasIdlePhase = false;
+        }
+        else
+        {
+            double half = (UsableFrames - 1) / 2.0;
+            if (!_hasIdlePhase)
+            {
+                double t = Math.Clamp((_frameIndex - CenterFrame) / half, -1, 1);
+                _idlePhase = Math.Asin(t);
+                _hasIdlePhase = true;
+            }
+            _idlePhase += 0.033 * (2 * Math.PI / 7.5);
+            targetFrame = CenterFrame + Math.Sin(_idlePhase) * half;
+        }
+
+        _frameIndex += (targetFrame - _frameIndex) * 0.16;
+        int frame = Math.Clamp((int)Math.Round(_frameIndex), 0, UsableFrames - 1);
+        if (frame != _lastFrame)
+        {
+            _lastFrame = frame;
+            Sprite.Source = _frames[frame];
+        }
+
+        Parallax.X += (targetX - Parallax.X) * 0.18;
+        Parallax.Y += (targetY - Parallax.Y) * 0.18;
+        PointerScale.ScaleX += (targetScale - PointerScale.ScaleX) * 0.16;
+        PointerScale.ScaleY = PointerScale.ScaleX;
+
+        _floatTime += 0.033;
+        Float.Y = Math.Sin(_floatTime * 1.2) * 2.0;
+    }
+}

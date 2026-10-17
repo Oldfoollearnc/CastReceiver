@@ -53,6 +53,12 @@ public sealed class CastAppHost : IDisposable
     public bool FirewallRulePresent { get; private set; }
     public string? HotspotConflict { get; private set; }
 
+    /// <summary>
+    /// 最近一次后台探测到的 Wi-Fi 链路（频段/速率）。AirPlay 自动画质用它，
+    /// 所以**必须**是缓存值：<see cref="NetInfo.ReadWlanLink"/> 要起 netsh 子进程，不能在 UI 线程上调。
+    /// </summary>
+    public NetInfo.WlanLink? WlanLink { get; private set; }
+
     public event Action<string>? Notice;
     public event Action? StateChanged;
 
@@ -80,11 +86,18 @@ public sealed class CastAppHost : IDisposable
     }
 
     /// <summary>把后台探测到的网络状态写入宿主（避免在 UI 线程上跑 netsh/PowerShell）。</summary>
-    public void ApplyNetworkSnapshot(LanInterface? lan, string category, bool firewallRulePresent)
+    public void ApplyNetworkSnapshot(LanInterface? lan, string category, bool firewallRulePresent, NetInfo.WlanLink? wlan = null)
     {
         Lan = lan;
         NetworkCategory = category;
         FirewallRulePresent = firewallRulePresent;
+        if (wlan is not null) WlanLink = wlan;
+
+        // 链路/频段变了：AirPlay 下一次连接用的画质也跟着重算（不会打断进行中的会话）
+        if (AirPlay.IsRunning)
+        {
+            AirPlay.ApplyQualityProfile(Settings, WlanLink);
+        }
     }
 
     public void ApplyHotspotConflict(string? conflict) => HotspotConflict = conflict;
@@ -160,9 +173,16 @@ public sealed class CastAppHost : IDisposable
             return false;
         }
 
-        bool ok = AirPlay.Start(Settings);
+        bool ok = AirPlay.Start(Settings, WlanLink);
         StateChanged?.Invoke();
         return ok;
+    }
+
+    /// <summary>画质档位改了：让 AirPlay 重新算下一次连接用的请求画质（不踢掉正在投的设备）。</summary>
+    public void ApplyAirPlayQuality()
+    {
+        AirPlay.ApplyQualityProfile(Settings, WlanLink);
+        StateChanged?.Invoke();
     }
 
     public void StopAirPlay()

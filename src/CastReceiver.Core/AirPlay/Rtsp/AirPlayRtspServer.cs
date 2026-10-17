@@ -48,7 +48,7 @@ public sealed class AirPlayRtspServer : IDisposable
     public int Port { get; private set; }
 
     /// <summary>镜像视频帧就绪（Annex-B 字节 + 原始时间戳）。</summary>
-    public event Action<string, byte[], ulong>? FrameReady;
+    public event Action<string, MirrorFrame>? FrameReady;
 
     /// <summary>
     /// 某路镜像流开始。第一个参数是**会话 id** —— 必须带上它：
@@ -438,7 +438,7 @@ public sealed class AirPlayRtspServer : IDisposable
                     (byte[] key, byte[] iv) = DeriveVideoKey(session.AesKey, (ulong)connectionId);
 
                     var mirror = new MirrorStreamReceiver(key, iv, _log);
-                    mirror.FrameReady += (frame, timestamp) => FrameReady?.Invoke(session.Id, frame, timestamp);
+                    mirror.FrameReady += frame => FrameReady?.Invoke(session.Id, frame);
                     mirror.Start();
                     session.Mirror = mirror;
                     MirrorStarted?.Invoke(session.Id, mirror);

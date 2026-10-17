@@ -71,6 +71,17 @@
                                     </StackPanel>
                                 </Border>
 
+                                <Grid Margin="0,16,0,0">
+                                    <StackPanel>
+                                        <TextBlock Text="界面动效" FontSize="13" />
+                                        <TextBlock Text="窗口入场、悬停反馈与待机页 3D 转台" Style="{DynamicResource S.Desc}" Margin="0,2,0,0" />
+                                    </StackPanel>
+                                    <ToggleButton x:Name="SwMotion" Style="{DynamicResource S.Switch}"
+                                                  Checked="Motion_Changed" Unchecked="Motion_Changed"
+                                                  HorizontalAlignment="Right" VerticalAlignment="Center"
+                                                  AutomationProperties.Name="界面动效" />
+                                </Grid>
+
                                 <TextBlock Text="设备" Style="{DynamicResource S.H2}" Margin="0,26,0,0" />
                                 <TextBlock Text="投屏列表里显示的名字（默认＝当前 Windows 账户名）" Style="{DynamicResource S.Desc}" Margin="0,8,0,0" />
                                 <TextBox x:Name="TxtName" Margin="0,6,0,0" HorizontalAlignment="Left" Width="300" TextChanged="TxtName_TextChanged"

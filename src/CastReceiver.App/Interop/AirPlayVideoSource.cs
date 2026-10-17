@@ -1,8 +1,10 @@
+using System.Buffers;
+using System.Runtime.InteropServices.WindowsRuntime;
 using CastReceiver.Core.AirPlay.Mirror;
 using Windows.Foundation;
 using Windows.Media.Core;
 using Windows.Media.MediaProperties;
-using Windows.Security.Cryptography;
+using Windows.Storage.Streams;
 
 namespace CastReceiver.App.Interop;
 
@@ -15,16 +17,62 @@ namespace CastReceiver.App.Interop;
 /// "手机持续推、我们边收边喂"的镜像场景；而且它和现有渲染链路完全兼容——
 /// 截屏/录制/反截屏/画质档位都建立在 MediaPlayer 之上，换掉 MediaSource 即可全部复用。
 ///
+/// 2026-10 苹果投屏卡顿的三处关键修正：
+/// <list type="number">
+/// <item><b><c>BufferTime = 0</c></b>：MediaStreamSource 的默认缓冲是 **3 秒**，它会提前
+///       向我们要 3 秒的样本再开始播。直播镜像要的是"现在"，3 秒预取既抬高延迟又让
+///       队列一直处于"要么空、要么满"的状态，是卡顿/冻屏最可疑的来源。设为 0 后按需取帧。</item>
+/// <item><b>样本缓冲池化 + 关键帧/不连续标记</b>：1080p 关键帧不再每帧分配托管大数组；
+///       关键帧显式标记，重同步后的第一帧标 Discontinuous，解码器才知道该从哪重新起解。</item>
+/// <item><b>时间戳防跳变</b>：手机时间戳倒退/大跳时重新锚定（见
+///       <see cref="MirrorTimestampNormalizer"/>），不再把"10 秒后"的时间戳直接交给播放器。</item>
+/// </list>
+///
 /// 采样时间戳按"首个帧为零点"重排：手机发的是它自己的 Q32.32 秒时钟
 /// （近似开机纳秒数，不是 Unix 纪元），直接当 TimeSpan 用会得到离谱的值。
 /// </summary>
 internal sealed class AirPlayVideoSource : IDisposable
 {
-    /// <summary>默认帧时长（真机时间戳算不出间隔时使用）。</summary>
-    private static readonly TimeSpan DefaultDuration = TimeSpan.FromSeconds(1.0 / 60.0);
+    /// <summary>解码器取走样本后归还托管缓冲（池化租约）。</summary>
+    private sealed class SampleLease
+    {
+        private byte[]? _buffer;
+
+        public SampleLease(int length)
+        {
+            int size = Math.Max(1, length);
+            _buffer = ArrayPool<byte>.Shared.Rent(size);
+            // AsBuffer 把托管数组包成 IBuffer（CsWinRT 的零拷贝封装）。
+            // 数组在样本 Processed 之前不能被回收，所以这里用"租约 + Processed"管理生命周期。
+            Buffer = _buffer.AsBuffer(0, size);
+        }
+
+        public IBuffer Buffer { get; }
+
+        public Span<byte> Span
+        {
+            get
+            {
+                byte[]? buffer = _buffer;
+                return buffer is null ? Span<byte>.Empty : buffer.AsSpan(0, (int)Buffer.Length);
+            }
+        }
+
+        /// <summary>幂等归还（丢帧与 Processed 都可能走到这里）。</summary>
+        public void Return()
+        {
+            byte[]? buffer = Interlocked.Exchange(ref _buffer, null);
+            if (buffer is not null)
+            {
+                ArrayPool<byte>.Shared.Return(buffer);
+            }
+        }
+    }
+
+    private readonly record struct QueuedSample(MediaStreamSample Sample, SampleLease Lease, TimeSpan Timestamp, bool KeyFrame);
 
     private readonly object _gate = new();
-    private readonly Queue<Sample> _queue = new();
+    private readonly Queue<QueuedSample> _queue = new();
 
     /// <summary>
     /// 丢帧策略（在 Core 里，纯逻辑、有自检）：积压超限时不再零散丢最旧的帧，
@@ -32,32 +80,39 @@ internal sealed class AirPlayVideoSource : IDisposable
     /// </summary>
     private readonly MirrorFrameGate _frameGate;
 
+    /// <summary>手机时间戳 → 单调展示时间轴。</summary>
+    private readonly MirrorTimestampNormalizer _clock;
+
     private MediaStreamSource? _streamSource;
     private MediaSource? _mediaSource;
     private MediaStreamSourceSampleRequest? _pendingRequest;
     private MediaStreamSourceSampleRequestDeferral? _pendingDeferral;
 
-    private TimeSpan _baseTimestamp;
-    private bool _hasBase;
-    private TimeSpan _lastTimestamp;
     private bool _started;
 
-    /// <summary>推送但尚未被解码器取走的帧的上限；超出时丢弃最旧的帧（直播以"跟上"为先）。</summary>
-    public AirPlayVideoSource(int width = 1920, int height = 1080, int capacity = 8)
+    /// <summary>推送但尚未被解码器取走的帧的上限；超出时清空积压并等关键帧（直播以"跟上"为先）。</summary>
+    public AirPlayVideoSource(int width = 1920, int height = 1080, int capacity = 16, int fps = 30)
     {
         if (capacity < 1)
         {
             throw new ArgumentOutOfRangeException(nameof(capacity));
         }
+
         _frameGate = new MirrorFrameGate(capacity);
+        _clock = new MirrorTimestampNormalizer(Math.Clamp(fps, 1, 240));
+
+        VideoWidth = Math.Max(1, width);
+        VideoHeight = Math.Max(1, height);
+        VideoFPS = Math.Clamp(fps, 1, 240);
 
         var properties = VideoEncodingProperties.CreateH264();
-        properties.Width = (uint)Math.Max(1, width);
-        properties.Height = (uint)Math.Max(1, height);
+        properties.Width = (uint)VideoWidth;
+        properties.Height = (uint)VideoHeight;
         try
         {
-            // FrameRate 在 CsWinRT 投影里是只读属性，但它返回的 MediaRatio 可以就地改
-            properties.FrameRate.Numerator = 60;
+            // FrameRate 在 CsWinRT 投影里是只读属性，但它返回的 MediaRatio 可以就地改。
+            // 必须与向手机声明的 maxFPS 一致：声明 30 却按 60 喂，管线会等帧、看起来就是"一顿一顿"。
+            properties.FrameRate.Numerator = (uint)VideoFPS;
             properties.FrameRate.Denominator = 1;
         }
         catch
@@ -68,6 +123,8 @@ internal sealed class AirPlayVideoSource : IDisposable
         _streamSource = new MediaStreamSource(new VideoStreamDescriptor(properties))
         {
             CanSeek = false,       // 直播流不可 seek
+            // 关键：默认 3 秒！直播镜像必须按需取帧，否则延迟与卡顿都会被放大。
+            BufferTime = TimeSpan.Zero,
         };
         _streamSource.SampleRequested += OnSampleRequested;
         _streamSource.Starting += OnStarting;
@@ -81,13 +138,18 @@ internal sealed class AirPlayVideoSource : IDisposable
     public MediaSource MediaSource => _mediaSource
         ?? throw new ObjectDisposedException(nameof(AirPlayVideoSource));
 
+    /// <summary>本次会话向手机请求的分辨率与帧率（渲染表面初始尺寸也用它）。</summary>
+    public int VideoWidth { get; }
+    public int VideoHeight { get; }
+    public int VideoFPS { get; }
+
     /// <summary>已推送的帧数。</summary>
     public long PushedCount { get; private set; }
 
     /// <summary>因为解码跟不上而丢弃的帧数（含"重同步时清空的积压"）。</summary>
     public long DroppedCount { get; private set; }
 
-    /// <summary>重同步次数：每次"积压超限 → 等关键帧重新起解"算一次。</summary>
+    /// <summary>重同步次数：每次"积压超限 → 清空积压 → 等关键帧重新起解"算一次。</summary>
     public long ResyncCount { get; private set; }
 
     /// <summary>当前是否在等关键帧（等的时候画面会停一下，界面据此如实说明）。</summary>
@@ -119,10 +181,10 @@ internal sealed class AirPlayVideoSource : IDisposable
     /// <summary>状态变化（供界面显示）。</summary>
     public event Action<string>? Status;
 
-    /// <summary>推入一帧（Annex-B 字节 + 手机给的原始时间戳）。</summary>
-    public void Push(byte[] annexB, ulong remoteTimestamp)
+    /// <summary>推入一帧（Annex-B 借用视图 + 手机给的原始时间戳）。</summary>
+    public void Push(MirrorFrame frame)
     {
-        if (annexB is null || annexB.Length == 0)
+        if (frame.Length <= 0 || frame.Buffer is null)
         {
             return;
         }
@@ -135,11 +197,11 @@ internal sealed class AirPlayVideoSource : IDisposable
             }
 
             // 先问策略：这一帧收不收、要不要先清空积压。必须用**入队前**的积压数判断。
-            FrameDisposition disposition = _frameGate.Offer(annexB, _queue.Count, DateTime.UtcNow, out bool clearBacklog);
+            FrameDisposition disposition = _frameGate.Offer(frame.IsKeyFrame, _queue.Count, DateTime.UtcNow, out bool clearBacklog);
             if (clearBacklog && _queue.Count > 0)
             {
                 DroppedCount += _queue.Count;
-                _queue.Clear();
+                DrainQueueLocked();
             }
 
             if (disposition is FrameDisposition.DropOverflow
@@ -148,7 +210,7 @@ internal sealed class AirPlayVideoSource : IDisposable
             {
                 DroppedCount++;
                 // 关键：这里**不要**去兑现挂起的请求。我们正在等关键帧，
-                // 把一个参考链残缺的帧交给解码器只会换来花屏/卡顿（就是用户报的那个现象）。
+                // 把一个参考链残缺的帧交给解码器只会换来花屏/卡顿。
                 return;
             }
 
@@ -157,41 +219,33 @@ internal sealed class AirPlayVideoSource : IDisposable
                 ResyncCount++;
             }
 
-            TimeSpan timestamp = Rebase(remoteTimestamp);
-            TimeSpan duration = DefaultDuration;
-            if (_hasBase && timestamp > _lastTimestamp)
+            TimeSpan timestamp = _clock.Map(frame.Timestamp);
+            TimeSpan duration = _clock.LastDuration;
+            bool discontinuity = _clock.LastWasDiscontinuity || disposition == FrameDisposition.AcceptAfterResync;
+
+            // 把帧复制进"租约"缓冲；IBuffer 零拷贝包住它，样本 Processed 后数组才回到池里。
+            var lease = new SampleLease(frame.Length);
+            try
             {
-                TimeSpan delta = timestamp - _lastTimestamp;
-                // 真机时间戳偶尔会跳变；只接受合理的间隔，避免解码器被喂进荒谬的时长
-                if (delta >= TimeSpan.FromMilliseconds(1) && delta <= TimeSpan.FromMilliseconds(500))
-                {
-                    duration = delta;
-                }
+                frame.Span.CopyTo(lease.Span);
+
+                MediaStreamSample sample = MediaStreamSample.CreateFromBuffer(lease.Buffer, timestamp);
+                sample.Duration = duration;
+                sample.KeyFrame = frame.IsKeyFrame;
+                sample.Discontinuous = discontinuity;
+                sample.Processed += (_, _) => lease.Return();
+
+                _queue.Enqueue(new QueuedSample(sample, lease, timestamp, frame.IsKeyFrame));
+                PushedCount++;
+
+                TryFulfillPendingRequest();
             }
-
-            _queue.Enqueue(new Sample(annexB, timestamp, duration));
-            _lastTimestamp = timestamp;
-            PushedCount++;
-
-            TryFulfillPendingRequest();
+            catch (Exception ex)
+            {
+                lease.Return();
+                Status?.Invoke($"交付镜像帧失败：{ex.Message}");
+            }
         }
-    }
-
-    /// <summary>把手机时钟重排成"第一帧 = 0"。</summary>
-    private TimeSpan Rebase(ulong remoteTimestamp)
-    {
-        // AirPlay 的时间戳是 Q32.32 秒：高 32 位是秒，低 32 位是小数
-        double seconds = remoteTimestamp / 4294967296.0;
-        var absolute = TimeSpan.FromSeconds(seconds);
-        if (!_hasBase)
-        {
-            _baseTimestamp = absolute;
-            _hasBase = true;
-            _lastTimestamp = TimeSpan.Zero;
-            return TimeSpan.Zero;
-        }
-        TimeSpan relative = absolute - _baseTimestamp;
-        return relative < TimeSpan.Zero ? TimeSpan.Zero : relative;
     }
 
     /// <summary>解码器来要数据；队列空时挂起一个 deferral，等下一帧到达再交付。</summary>
@@ -201,7 +255,7 @@ internal sealed class AirPlayVideoSource : IDisposable
         {
             if (_queue.Count > 0)
             {
-                args.Request.Sample = Dequeue();
+                args.Request.Sample = DequeueLocked();
                 DeliveredCount++;
                 return;
             }
@@ -243,7 +297,7 @@ internal sealed class AirPlayVideoSource : IDisposable
 
         try
         {
-            _pendingRequest.Sample = Dequeue();
+            _pendingRequest.Sample = DequeueLocked();
             DeliveredCount++;
         }
         catch (Exception ex)
@@ -265,13 +319,16 @@ internal sealed class AirPlayVideoSource : IDisposable
         }
     }
 
-    private MediaStreamSample Dequeue()
+    /// <summary>取出一帧交给解码器（租约由样本的 Processed 归还，不在这里动）。</summary>
+    private MediaStreamSample DequeueLocked() => _queue.Dequeue().Sample;
+
+    /// <summary>清空积压并归还它们的缓冲租约（只处理"还没交给解码器"的样本）。</summary>
+    private void DrainQueueLocked()
     {
-        Sample sample = _queue.Dequeue();
-        var buffer = CryptographicBuffer.CreateFromByteArray(sample.Data);
-        var mediaSample = MediaStreamSample.CreateFromBuffer(buffer, sample.Timestamp);
-        mediaSample.Duration = sample.Duration;
-        return mediaSample;
+        while (_queue.Count > 0)
+        {
+            _queue.Dequeue().Lease.Return();
+        }
     }
 
     private void OnStarting(MediaStreamSource sender, MediaStreamSourceStartingEventArgs args)
@@ -297,7 +354,7 @@ internal sealed class AirPlayVideoSource : IDisposable
     {
         lock (_gate)
         {
-            _queue.Clear();
+            DrainQueueLocked();
             try
             {
                 _pendingDeferral?.Complete();
@@ -316,8 +373,8 @@ internal sealed class AirPlayVideoSource : IDisposable
     {
         lock (_gate)
         {
-            _queue.Clear();
-            _hasBase = false;
+            DrainQueueLocked();
+            _clock.Reset();
             _frameGate.Reset();
         }
     }
@@ -342,7 +399,7 @@ internal sealed class AirPlayVideoSource : IDisposable
                 // 忽略
             }
 
-            _queue.Clear();
+            DrainQueueLocked();
             try
             {
                 _pendingDeferral?.Complete();
@@ -363,6 +420,4 @@ internal sealed class AirPlayVideoSource : IDisposable
             _ = streamSource;
         }
     }
-
-    private readonly record struct Sample(byte[] Data, TimeSpan Timestamp, TimeSpan Duration);
 }

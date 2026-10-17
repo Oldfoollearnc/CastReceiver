@@ -21,6 +21,12 @@ public sealed class AirPlayOptions
 
     public double RefreshRate { get; set; } = 60.0;
 
+    /// <summary>向手机声明的最大帧率（写进 displays[0].maxFPS）。低延迟档建议 30。</summary>
+    public int MaxFPS { get; set; } = 30;
+
+    /// <summary>画质档位名字（只用于界面/日志，不进协议）。</summary>
+    public string QualityLabel { get; set; } = "低延迟";
+
     /// <summary>初始音量（AirPlay 用 dB，范围 0 … -30）。镜像不用音频，取 0。</summary>
     public double InitialVolume { get; set; }
 }
@@ -55,7 +61,7 @@ internal static class AirPlayInfoPlist
                 ["rotation"] = false,
                 // 参考实现写的是 1.0/refreshRate（60 → 0.0166666…）
                 ["refreshRate"] = options.RefreshRate > 0 ? 1.0 / options.RefreshRate : 0.0,
-                ["maxFPS"] = 30L,
+                ["maxFPS"] = (long)Math.Clamp(options.MaxFPS, 1, 240),
                 ["overscanned"] = false,
                 ["features"] = 14L,
             },
@@ -112,6 +118,13 @@ internal static class AirPlayInfoPlist
             ["initialVolume"] = options.InitialVolume,
             ["audioLatencies"] = audioLatencies,
             ["audioFormats"] = audioFormats,
+            // UxPlay 的 -s wxh@r 走的是 raop_set_plist("width"/"height"/"refreshRate"/"maxFPS")，
+            // 也就是 **info plist 的顶层键**；部分 iOS 版本先读这里、再读 displays[0]。
+            // 两处都写、保持同值，才能确保请求真的生效。
+            ["width"] = (long)options.Width,
+            ["height"] = (long)options.Height,
+            ["refreshRate"] = (long)Math.Clamp(options.RefreshRate, 1, 240),
+            ["maxFPS"] = (long)Math.Clamp(options.MaxFPS, 1, 240),
             ["displays"] = displays,
         };
     }

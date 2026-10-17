@@ -81,9 +81,11 @@ public sealed class MirrorFrameGate
     /// <param name="nowUtc">当前时间（传入是为了让自检可以确定性验证超时）。</param>
     /// <param name="clearBacklog">返回 true 时调用方必须**先清空自己的积压**。</param>
     public FrameDisposition Offer(ReadOnlySpan<byte> annexB, int queuedCount, DateTime nowUtc, out bool clearBacklog)
-    {
-        bool keyFrame = MirrorStreamReceiver.IsKeyFrame(annexB);
+        => Offer(MirrorStreamReceiver.IsKeyFrame(annexB), queuedCount, nowUtc, out clearBacklog);
 
+    /// <summary>同上，但关键帧标记由调用方给出（接收端已经扫过一遍，不必重复扫）。</summary>
+    public FrameDisposition Offer(bool keyFrame, int queuedCount, DateTime nowUtc, out bool clearBacklog)
+    {
         // ① 正在等关键帧
         if (_waitingSinceUtc is not null)
         {

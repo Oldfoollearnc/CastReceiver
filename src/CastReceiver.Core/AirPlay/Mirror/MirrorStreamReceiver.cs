@@ -1,8 +1,24 @@
+using System.Buffers;
 using System.Buffers.Binary;
 using System.Net;
 using System.Net.Sockets;
 
 namespace CastReceiver.Core.AirPlay.Mirror;
+
+/// <summary>
+/// 一帧镜像视频（Annex-B H.264）的**借用视图**。
+///
+/// <see cref="Buffer"/> 来自 <see cref="ArrayPool{T}"/>，只在 <c>FrameReady</c> 回调期间有效；
+/// 回调返回后接收端会立刻归还。处理器必须在这之前把数据复制走（<c>AirPlayVideoSource</c>
+/// 就是在这里复制进 WinRT IBuffer 的），**不要**把它存进队列/字段。
+/// 这样 1080p 关键帧不再每帧分配一个几十~几百 KB 的托管数组（大对象堆），
+/// 避免 Gen2 回收造成的周期性卡顿。
+/// </summary>
+public readonly record struct MirrorFrame(byte[] Buffer, int Length, ulong Timestamp, bool IsKeyFrame)
+{
+    /// <summary>帧内容（仅在回调期间有效）。</summary>
+    public ReadOnlySpan<byte> Span => Buffer.AsSpan(0, Length);
+}
 
 /// <summary>
 /// 接收 AirPlay 镜像视频流并还原出 Annex-B 形式的 H.264。
@@ -36,6 +52,9 @@ public sealed class MirrorStreamReceiver : IDisposable
     private const byte TypeOldKeepAlive = 0x02;
     private const byte TypeStreamingReport = 0x05;
 
+    /// <summary>直播流的接收缓冲：大一点能吸收 Wi-Fi 的突发，避免应用层被小包唤醒太频繁。</summary>
+    private const int ReceiveBufferBytes = 512 * 1024;
+
     private readonly byte[] _aesKey;
     private readonly byte[] _aesIv;
     private readonly Action<string>? _log;
@@ -58,8 +77,11 @@ public sealed class MirrorStreamReceiver : IDisposable
     /// <summary>监听端口（RTSP SETUP 响应里的 dataPort）。</summary>
     public int Port { get; private set; }
 
-    /// <summary>已接收的视频帧（Annex-B 字节 + 原始时间戳）。</summary>
-    public event Action<byte[], ulong>? FrameReady;
+    /// <summary>
+    /// 已接收的视频帧（Annex-B 字节 + 原始时间戳 + 是否关键帧）。
+    /// 回调是**同步**的、在接收线程上执行；帧内存在回调返回后即被回收，必须当场复制。
+    /// </summary>
+    public event Action<MirrorFrame>? FrameReady;
 
     /// <summary>已生成的 Annex-B 帧数。</summary>
     public int FrameCount { get; private set; }
@@ -127,7 +149,13 @@ public sealed class MirrorStreamReceiver : IDisposable
 
             // 直播流：关掉 Nagle。默认开着时小包会被攒着发、还要等对端 ACK，
             // 与延迟 ACK 叠加可平白加上几十毫秒 —— 镜像会明显"发木"。
-            try { client.NoDelay = true; } catch { }
+            try
+            {
+                client.NoDelay = true;
+                client.ReceiveBufferSize = ReceiveBufferBytes;
+            }
+            catch { }
+
             IsConnected = true;
             _log?.Invoke("手机已连上镜像流端口");
             try
@@ -182,45 +210,55 @@ public sealed class MirrorStreamReceiver : IDisposable
                 return;
             }
 
-            byte[] payload = new byte[payloadSize];
-            if (payloadSize > 0 && !await ReadExactAsync(stream, payload, 0, (int)payloadSize, token).ConfigureAwait(false))
+            // 载荷走 ArrayPool：1080p 关键帧常有 100–300KB，直接 new 会落进大对象堆，
+            // 每秒几十次分配/回收就是周期性卡顿的典型来源。
+            byte[] payload = ArrayPool<byte>.Shared.Rent((int)Math.Max(1, payloadSize));
+            try
             {
-                return;
+                if (payloadSize > 0
+                    && !await ReadExactAsync(stream, payload, 0, (int)payloadSize, token).ConfigureAwait(false))
+                {
+                    return;
+                }
+
+                switch (type)
+                {
+                    case TypeVideo:
+                        HandleVideo(cipher, payload, (int)payloadSize, timestamp);
+                        break;
+
+                    case TypeCodecConfig:
+                        HandleCodecConfig(payload, (int)payloadSize, optionLow, timestamp);
+                        break;
+
+                    case TypeOldKeepAlive:
+                    case TypeStreamingReport:
+                        // 心跳/报表：明文，读完即丢（不推进密钥流）
+                        break;
+
+                    default:
+                        _log?.Invoke($"收到未处理的镜像包类型 0x{type:x2}（长度 {payloadSize}）");
+                        break;
+                }
             }
-
-            switch (type)
+            finally
             {
-                case TypeVideo:
-                    HandleVideo(cipher, payload, timestamp);
-                    break;
-
-                case TypeCodecConfig:
-                    HandleCodecConfig(payload, optionLow, timestamp);
-                    break;
-
-                case TypeOldKeepAlive:
-                case TypeStreamingReport:
-                    // 心跳/报表：明文，读完即丢（不推进密钥流）
-                    break;
-
-                default:
-                    _log?.Invoke($"收到未处理的镜像包类型 0x{type:x2}（长度 {payloadSize}）");
-                    break;
+                // 事件是同步的：到这里处理器已经复制完（见 FrameReady 的约定）
+                ArrayPool<byte>.Shared.Return(payload);
             }
         }
     }
 
     /// <summary>加密视频包：CTR 解密 → AVCC 转 Annex-B → 按需前缀 SPS/PPS。</summary>
-    private void HandleVideo(Aes128Ctr cipher, byte[] payload, ulong timestamp)
+    private void HandleVideo(Aes128Ctr cipher, byte[] payload, int length, ulong timestamp)
     {
-        if (payload.Length == 0)
+        if (length == 0)
         {
             return;
         }
 
-        cipher.Transform(payload);
+        cipher.Transform(payload.AsSpan(0, length));
 
-        int length = payload.Length;
         if (!TryConvertAvccToAnnexB(payload, length, out int outLength))
         {
             InvalidPayloadCount++;
@@ -228,30 +266,37 @@ public sealed class MirrorStreamReceiver : IDisposable
             return;
         }
 
-        byte[] frame;
+        bool keyFrame = IsKeyFrame(payload.AsSpan(0, outLength));
+
         if (_configPending && _configAnnexB is not null && _configTimestamp == timestamp)
         {
-            // SPS/PPS 与紧随其后的 IDR 共用同一个时间戳，这时才注入
-            frame = new byte[_configAnnexB.Length + outLength];
-            Array.Copy(_configAnnexB, 0, frame, 0, _configAnnexB.Length);
-            Array.Copy(payload, 0, frame, _configAnnexB.Length, outLength);
-            _configPending = false;
-        }
-        else
-        {
-            // 这里**不要**再切一份：TryConvertAvccToAnnexB 成功时 outLength 恒等于 length
-            // （它就是"每段长度前缀都合法、加起来正好等于总长"的判据），所以 payload 本身就是
-            // 最终帧。早先写成 payload[..outLength] 等于每帧白拷一次整帧（1080p 下几十~几百 KB、
-            // 每秒约 60 次），是纯粹的分配与拷贝开销。
-            frame = payload;
+            // SPS/PPS 与紧随其后的 IDR 共用同一个时间戳，这时才注入。
+            // 前缀需要一块连续内存，只好再借一块（同样来自池，不落大对象堆）。
+            byte[] combined = ArrayPool<byte>.Shared.Rent(_configAnnexB.Length + outLength);
+            try
+            {
+                Array.Copy(_configAnnexB, 0, combined, 0, _configAnnexB.Length);
+                Array.Copy(payload, 0, combined, _configAnnexB.Length, outLength);
+                _configPending = false;
+
+                FrameCount++;
+                FrameReady?.Invoke(new MirrorFrame(combined, _configAnnexB.Length + outLength, timestamp, keyFrame));
+            }
+            finally
+            {
+                ArrayPool<byte>.Shared.Return(combined);
+            }
+            return;
         }
 
+        // 这里**不要**再切一份：TryConvertAvccToAnnexB 成功时 outLength 恒等于 length
+        // （它就是"每段长度前缀都合法、加起来正好等于总长"的判据），所以 payload 本身就是最终帧。
         FrameCount++;
-        FrameReady?.Invoke(frame, timestamp);
+        FrameReady?.Invoke(new MirrorFrame(payload, outLength, timestamp, keyFrame));
     }
 
     /// <summary>未加密的 SPS/PPS 包：解析出配置，缓存到下一个时间戳匹配的视频包前。</summary>
-    private void HandleCodecConfig(byte[] payload, byte optionLow, ulong timestamp)
+    private void HandleCodecConfig(byte[] payload, int length, byte optionLow, ulong timestamp)
     {
         // 0x56/0x5e 表示"视频停止"（手机锁屏/切走），此时没有配置可解析
         if (optionLow is 0x56 or 0x5e)
@@ -268,14 +313,14 @@ public sealed class MirrorStreamReceiver : IDisposable
             return;
         }
 
-        if (payload.Length < 11)
+        if (length < 11)
         {
             return;
         }
 
         int spsSize = (payload[6] << 8) | payload[7];
         int spsOffset = 8;
-        if (spsSize <= 0 || spsOffset + spsSize + 3 > payload.Length)
+        if (spsSize <= 0 || spsOffset + spsSize + 3 > length)
         {
             _log?.Invoke("SPS 长度越界，忽略该配置包");
             return;
@@ -284,7 +329,7 @@ public sealed class MirrorStreamReceiver : IDisposable
         int ppsSizeOffset = spsOffset + spsSize + 1;
         int ppsSize = (payload[ppsSizeOffset] << 8) | payload[ppsSizeOffset + 1];
         int ppsOffset = spsOffset + spsSize + 3;
-        if (ppsSize <= 0 || ppsOffset + ppsSize > payload.Length)
+        if (ppsSize <= 0 || ppsOffset + ppsSize > length)
         {
             _log?.Invoke("PPS 长度越界，忽略该配置包");
             return;

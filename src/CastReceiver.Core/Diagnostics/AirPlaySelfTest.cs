@@ -4,6 +4,7 @@ using CastReceiver.Core.AirPlay.FairPlay;
 using CastReceiver.Core.AirPlay.Mirror;
 using CastReceiver.Core.AirPlay.Plist;
 using CastReceiver.Core.AirPlay.Rtsp;
+using CastReceiver.Core.Infrastructure;
 
 namespace CastReceiver.Core.Diagnostics;
 
@@ -69,7 +70,100 @@ internal static class AirPlaySelfTest
         CheckMirrorParsing(add);
         CheckKeyFrameDetection(add);
         CheckFrameGate(add);
+        CheckTimestampNormalizer(add);
+        CheckQualityProfile(add);
         CheckVideoKeyDerivation(add);
+    }
+
+    // ---------------------------------------------------------------- 时间戳规整
+
+    private static void CheckTimestampNormalizer(Action<string, string, SelfTestRunner.Verdict, string> add)
+    {
+        try
+        {
+            var clock = new MirrorTimestampNormalizer(fps: 30);
+            const ulong t0 = 100UL << 32;
+            ulong step = (ulong)(4294967296.0 / 30.0);
+
+            TimeSpan first = clock.Map(t0);
+            TimeSpan second = clock.Map(t0 + step);
+            TimeSpan third = clock.Map(t0 + step * 2);
+
+            bool firstOk = first == TimeSpan.Zero;
+            bool cadenceOk = Math.Abs(second.TotalMilliseconds - 33.33) < 0.5
+                             && Math.Abs(third.TotalMilliseconds - 66.67) < 0.8;
+
+            // 时间戳倒退：必须继续前进 1ms，并标成不连续
+            TimeSpan backward = clock.Map(t0 + step - 1000);
+            bool backwardOk = backward > third && clock.LastWasDiscontinuity;
+
+            // 向前大跳 3 秒：重新锚定到"上一帧 + 一个标称帧长"，不能把 3 秒后的时间交给播放器
+            TimeSpan jumped = clock.Map(t0 + step * 2 + (3UL << 32));
+            bool jumpOk = clock.LastWasDiscontinuity
+                          && jumped > backward
+                          && jumped - backward <= TimeSpan.FromMilliseconds(40);
+
+            clock.Reset();
+            bool resetOk = clock.Map(t0 + (5UL << 32)) == TimeSpan.Zero;
+
+            bool ok = firstOk && cadenceOk && backwardOk && jumpOk && resetOk;
+            add(Group, "时间戳规整：首帧归零 / 单调 / 倒退与大跳重新锚定", ok,
+                $"首帧 {first.TotalMilliseconds:F0}ms，第二帧 {second.TotalMilliseconds:F1}ms，"
+                + $"倒退后 {backward.TotalMilliseconds:F1}ms（不连续={backwardOk}），"
+                + $"大跳后 {jumped.TotalMilliseconds:F1}ms");
+        }
+        catch (Exception ex)
+        {
+            add(Group, "时间戳规整", SelfTestOutcome.Failed, ex.Message);
+        }
+    }
+
+    // ---------------------------------------------------------------- 自动画质
+
+    private static void CheckQualityProfile(Action<string, string, SelfTestRunner.Verdict, string> add)
+    {
+        try
+        {
+            var wifi5 = new NetInfo.WlanLink("test-5g", 5.0, 36, 866, 866, 80, "802.11ax");
+            var wifi24 = new NetInfo.WlanLink("test-24g", 2.4, 6, 72, 72, 60, "802.11n");
+
+            AirPlayQualityProfile low = AirPlayQualityProfile.ForSettings("LowLatency", wifi5, false);
+            AirPlayQualityProfile balanced = AirPlayQualityProfile.ForSettings("Balanced", wifi5, false);
+            AirPlayQualityProfile high5 = AirPlayQualityProfile.ForSettings("HighQuality", wifi5, false);
+            AirPlayQualityProfile high24 = AirPlayQualityProfile.ForSettings("HighQuality", wifi24, false);
+            AirPlayQualityProfile smooth = AirPlayQualityProfile.ForSettings("HighQuality", wifi5, true);
+
+            bool lowOk = low is { Width: 1280, Height: 720, MaxFPS: 30 };
+            bool balancedOk = balanced is { Width: 1920, Height: 1080, MaxFPS: 30 };
+            bool highOk = high5 is { Width: 1920, Height: 1080, MaxFPS: 30 };
+            bool weakOk = high24 is { Width: 1280, Height: 720, MaxFPS: 30 };
+            bool smoothOk = smooth is { Width: 1280, Height: 720, MaxFPS: 30 };
+
+            var bad = new AirPlaySessionHealth(30, 900, 60, 1, 1.2);
+            var good = new AirPlaySessionHealth(30, 900, 0, 0, 0.4);
+            bool badOk = bad.IsBad && AirPlayQualityProfile.Evaluate(bad, false) == AirPlayQualityDecision.Downgrade;
+            bool goodOk = good.IsGood && AirPlayQualityProfile.Evaluate(good, true) == AirPlayQualityDecision.Upgrade;
+            bool keepOk = AirPlayQualityProfile.Evaluate(good, false) == AirPlayQualityDecision.Keep;
+
+            // /info 的 maxFPS 必须真的写进 plist（手机读的是这个字段）
+            var options = new AirPlayOptions { Width = 1280, Height = 720, MaxFPS = 24 };
+            Dictionary<string, object?> info = AirPlayInfoPlist.Build(options, options.PkHex, 7000);
+            bool maxFpsOk = info.TryGetValue("displays", out object? displaysObj)
+                            && displaysObj is List<object?> { Count: > 0 } displays
+                            && displays[0] is Dictionary<string, object?> display
+                            && display.TryGetValue("maxFPS", out object? fps)
+                            && fps is 24L
+                            && info.TryGetValue("maxFPS", out object? rootFps) && rootFps is 24L;
+
+            bool ok = lowOk && balancedOk && highOk && weakOk && smoothOk && badOk && goodOk && keepOk && maxFpsOk;
+            add(Group, "自动画质：档位 × 2.4G/5G × 上次健康度（含 /info maxFPS）", ok,
+                $"低延迟 {low.Spec}，均衡 {balanced.Spec}，高画质 {high5.Spec}，2.4G 高画质 {high24.Spec}，"
+                + $"强制流畅 {smooth.Spec}，卡顿={bad.IsBad}，健康={good.IsGood}，maxFPS 写入={maxFpsOk}");
+        }
+        catch (Exception ex)
+        {
+            add(Group, "自动画质", SelfTestOutcome.Failed, ex.Message);
+        }
     }
 
     // ---------------------------------------------------------------- FairPlay

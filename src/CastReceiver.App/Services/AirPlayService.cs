@@ -33,6 +33,17 @@ public sealed class AirPlayService : IDisposable
     private MdnsResponder? _responder;
     private AirPlayRtspServer? _server;
 
+    /// <summary>启动时保存的设置/链路引用：改画质档位或网络变化时重算"下一次连接"的画质。</summary>
+    private CastSettings? _settings;
+    private AirPlayOptions? _options;
+    private NetInfo.WlanLink? _link;
+
+    /// <summary>本次/下一次连接向手机请求的画质（写进 /info 的 width/height/maxFPS）。</summary>
+    private AirPlayQualityProfile _profile = new(1280, 720, 30, "低延迟", "默认");
+
+    /// <summary>连续多少段健康会话（用于撤销自动降档，避免来回抖动）。</summary>
+    private int _goodSessions;
+
     /// <summary>所有活动会话（一台设备一条），按接入先后排序 —— 界面上的序号就按它来。</summary>
     private readonly List<AirPlaySession> _sessions = new();
 
@@ -180,6 +191,46 @@ public sealed class AirPlayService : IDisposable
     /// <summary>RTSP 控制端口（诊断用）。</summary>
     public int Port => _server?.Port ?? 0;
 
+    /// <summary>当前请求的画质（界面显示用）。</summary>
+    public AirPlayQualityProfile Quality => _profile;
+
+    /// <summary>侧栏「画质」一栏的文字，例如 <c>低延迟 1280×720@30</c>。</summary>
+    public string DisplayProfileText => _profile.DisplayText;
+
+    /// <summary>本次请求的画面宽度（挂渲染表面时用）。</summary>
+    public int VideoWidth => _profile.Width;
+
+    /// <summary>本次请求的画面高度。</summary>
+    public int VideoHeight => _profile.Height;
+
+    /// <summary>
+    /// 重算画质（只在**下一次连接**生效）：改画质档位、网络频段/速率变化、自动降档后都会调。
+    /// 不会踢掉正在投屏的设备 —— 用户体验优先。
+    /// </summary>
+    public void ApplyQualityProfile(CastSettings settings, NetInfo.WlanLink? link)
+    {
+        _settings = settings;
+        if (link is not null) _link = link;
+        if (_options is null) return;
+
+        AirPlayQualityProfile profile = AirPlayQualityProfile.ForSettings(
+            settings.QualityPreset, _link, settings.AirPlaySmoothFallback);
+        bool changed = profile != _profile;
+        _profile = profile;
+
+        _options.Width = profile.Width;
+        _options.Height = profile.Height;
+        _options.RefreshRate = 60;
+        _options.MaxFPS = profile.MaxFPS;
+        _options.QualityLabel = profile.Label;
+
+        _log.Debug("airplay", $"AirPlay 画质：{profile.DisplayText}（{profile.Reason}）");
+        if (changed)
+        {
+            _publish?.Invoke($"AirPlay 请求画质：{profile.DisplayText}（{profile.Reason}）");
+        }
+    }
+
     /// <summary>画面源就绪 —— 界面据此调用 <c>AttachSource</c>。</summary>
     public event EventHandler<MediaSource>? MediaSourceCreated;
 
@@ -198,7 +249,7 @@ public sealed class AirPlayService : IDisposable
     /// <summary>识别出客户端设备（型号/系统/User-Agent，握手时能拿到多少报多少）。</summary>
     public event Action<DeviceIdentity>? DeviceIdentified;
 
-    public bool Start(CastSettings settings)
+    public bool Start(CastSettings settings, NetInfo.WlanLink? link = null)
     {
         if (_server is not null)
         {
@@ -214,12 +265,18 @@ public sealed class AirPlayService : IDisposable
 
         try
         {
+            _settings = settings;
+            _link = link;
+
             var options = new AirPlayOptions
             {
                 ServerName = Sanitize(settings.DeviceName),
                 MacAddress = string.IsNullOrWhiteSpace(settings.AirPlayMac) ? "7A:1B:2C:3D:4E:5F" : settings.AirPlayMac,
                 PkHex = string.IsNullOrWhiteSpace(settings.AirPlayPk) ? new string('b', 64) : settings.AirPlayPk,
             };
+            _options = options;
+            // 先按"画质档位 + 链路 + 上次健康度"算出请求分辨率，再广播；/info 会直接读这些字段
+            ApplyQualityProfile(settings, link);
 
             // 先起控制通道：端口是动态分配的，广播里要用真实端口
             var server = new AirPlayRtspServer(options, m => _log.Debug("airplay", m));
@@ -300,9 +357,12 @@ public sealed class AirPlayService : IDisposable
 
     private void OnMirrorStarted(string sessionId, MirrorStreamReceiver receiver)
     {
-        // 每一路各自一个解码器：这样两路帧不会互相插帧，非聚焦的那几路也能出画（宫格要用）
-        var video = new AirPlayVideoSource(width: 1920, height: 1080, capacity: 8);
+        // 每一路各自一个解码器：这样两路帧不会互相插帧，非聚焦的那几路也能出画（宫格要用）。
+        // 描述符里的分辨率/帧率必须与 /info 向手机请求的一致（否则管线会等帧/按错误尺寸出画）。
+        AirPlayQualityProfile profile = _profile;
+        var video = new AirPlayVideoSource(profile.Width, profile.Height, capacity: 16, fps: profile.MaxFPS);
         video.Status += m => StatusChanged?.Invoke(m);
+        _log.Debug("airplay", $"新会话 {sessionId}：解码器按 {profile.Spec} 建立（{profile.Reason}）");
 
         var session = new AirPlaySession(sessionId, receiver, video);
         bool becameFocused;
@@ -344,7 +404,7 @@ public sealed class AirPlayService : IDisposable
         RaiseSessionsChanged();
     }
 
-    private void OnFrameReady(string sessionId, byte[] frame, ulong timestamp)
+    private void OnFrameReady(string sessionId, MirrorFrame frame)
     {
         AirPlaySession? session = Find(sessionId);
         if (session is null)
@@ -357,7 +417,8 @@ public sealed class AirPlayService : IDisposable
 
         // 关键：**推给这一路自己的解码器**。早先所有会话共用一个播放器，只能推聚焦那一路；
         // 现在每路一个解码器，不推的话它那块格子就永远收不到数据。
-        session.Video.Push(frame, timestamp);
+        session.Video.Push(frame);
+        session.NoteFrame(session.Video.QueuedCount);
 
         if (string.Equals(sessionId, _activeSessionId, StringComparison.Ordinal))
         {
@@ -424,6 +485,35 @@ public sealed class AirPlayService : IDisposable
         /// <summary>是否正在等关键帧（此时画面会停一下再恢复）。</summary>
         public bool WaitingForKeyFrame => Video.WaitingForKeyFrame;
 
+        /// <summary>本会话开始的时间（健康度按"实际时长"算，短会话不参与判断）。</summary>
+        internal DateTime StartedUtc { get; } = DateTime.UtcNow;
+
+        internal long HealthFrames { get; private set; }
+        internal double QueueSum { get; private set; }
+        internal int QueueSamples { get; private set; }
+        internal int PeakQueue { get; private set; }
+
+        /// <summary>每帧记一次积压，供会话结束时评估"持续卡顿还是网络抖动"。</summary>
+        internal void NoteFrame(int queued)
+        {
+            HealthFrames++;
+            if (queued > PeakQueue) PeakQueue = queued;
+            // 采样上限只是防溢出：实际一段投屏也就几万帧
+            if (QueueSamples < 200_000)
+            {
+                QueueSum += queued;
+                QueueSamples++;
+            }
+        }
+
+        /// <summary>会话结束时算一次健康度（纯本地计数，不向手机要数据）。</summary>
+        internal AirPlaySessionHealth HealthSnapshot()
+        {
+            double seconds = Math.Max(0, (DateTime.UtcNow - StartedUtc).TotalSeconds);
+            double averageQueue = QueueSamples > 0 ? QueueSum / QueueSamples : 0;
+            return new AirPlaySessionHealth(seconds, HealthFrames, DroppedCount, ResyncCount, averageQueue);
+        }
+
         /// <summary>界面标签：认不出型号就退回原始名字。</summary>
         public string Label => Identity?.ShortLabel() ?? "AirPlay 设备";
     }
@@ -457,6 +547,7 @@ public sealed class AirPlayService : IDisposable
         AirPlaySession? removed = Find(sessionId);
         if (removed is not null)
         {
+            EvaluateQualityAfterSession(removed);
             lock (_sessions)
             {
                 _sessions.Remove(removed);
@@ -503,6 +594,52 @@ public sealed class AirPlayService : IDisposable
         else
         {
             _publish?.Invoke($"一台设备已断开（还剩 {SessionCount} 路）");
+        }
+    }
+
+    /// <summary>
+    /// 会话结束后的自动画质调整（迟滞策略，只在**下一次连接**生效）：
+    /// 持续卡顿 → 记住"下次降 720p30"；连续两段健康会话 → 撤销降档。
+    /// 绝不为了切画质把正在投屏的会话踢掉。
+    /// </summary>
+    private void EvaluateQualityAfterSession(AirPlaySession session)
+    {
+        if (_settings is null) return;
+
+        AirPlaySessionHealth health = session.HealthSnapshot();
+        if (health.Seconds < 8 || health.Frames == 0)
+        {
+            return;   // 太短的会话（误触/立刻断开）不参与判断
+        }
+
+        bool alreadySmooth = _settings.AirPlaySmoothFallback;
+        AirPlayQualityDecision decision = AirPlayQualityProfile.Evaluate(health, alreadySmooth);
+        _log.Debug("airplay",
+            $"会话健康度：{health.Seconds:F0}s / {health.Frames} 帧 / 丢弃 {health.Dropped} / 重同步 {health.Resync}"
+            + $" / 平均积压 {health.AverageQueue:F1} → {decision}");
+
+        if (decision == AirPlayQualityDecision.Downgrade)
+        {
+            if (!alreadySmooth)
+            {
+                _settings.AirPlaySmoothFallback = true;
+                _settings.Save();
+            }
+            _goodSessions = 0;
+            ApplyQualityProfile(_settings, _link);
+            _publish?.Invoke($"检测到投屏卡顿（丢 {health.Dropped} 帧 / 重同步 {health.Resync} 次）：下次连接自动改用 720p30");
+        }
+        else if (decision == AirPlayQualityDecision.Upgrade)
+        {
+            _goodSessions++;
+            if (_goodSessions >= 2)
+            {
+                _goodSessions = 0;
+                _settings.AirPlaySmoothFallback = false;
+                _settings.Save();
+                ApplyQualityProfile(_settings, _link);
+                _publish?.Invoke("连续两段投屏流畅：AirPlay 画质已恢复自动提升");
+            }
         }
     }
 

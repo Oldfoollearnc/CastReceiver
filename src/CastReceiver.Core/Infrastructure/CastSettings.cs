@@ -131,11 +131,24 @@ public sealed class CastSettings
     /// <summary>画质档位：LowLatency / Balanced / HighQuality。</summary>
     public string QualityPreset { get; set; } = "LowLatency";
 
-    /// <summary>强调色：Mint / Amber / Violet / Rose / System。</summary>
+    /// <summary>
+    /// AirPlay 自动降档记忆：上一段投屏持续卡顿时置位，下一次连接请求 720p30；
+    /// 连续两段健康会话后自动清除。**内部状态，不在界面上暴露**（用户看到的是自动效果）。
+    /// </summary>
+    public bool AirPlaySmoothFallback { get; set; }
+
+    /// <summary>强调色：Mint / Amber / Violet / Rose / Blue / System。</summary>
     public string Accent { get; set; } = "Mint";
 
     /// <summary>界面密度：Comfortable / Compact。</summary>
     public string Density { get; set; } = "Comfortable";
+
+    /// <summary>
+    /// 界面动效（窗口入场、悬停、待机页 3D 转台）。默认开。
+    /// 刻意不受 Windows 全局「动画效果」影响：本机系统开关是关的，而用户要的是看得见的动效。
+    /// 需要静态界面时在 设置 → 通用 里关掉即可。
+    /// </summary>
+    public bool UiMotion { get; set; } = true;
 
     /// <summary>使用 Mica（Win11 半透明材质）背景。</summary>
     public bool UseMica { get; set; }
@@ -418,6 +431,14 @@ public sealed class CastSettings
         // 设备名：没填过、或还是旧版本的 "PC"，都换成当前 Windows 账户名；用户改过的名字保留
         s.DeviceName = ResolveDeviceName(s.DeviceName);
         if (s.HttpPort is < 1024 or > 65535) s.HttpPort = 2869;
+
+        // 清理一次开发期的试验强调色（极光蓝紫）：产品方向已回到原来的薄荷绿极简风。
+        // 之后用户自己在设置里选的强调色不会再被改动。
+        if (s.Accent.Equals("Aurora", StringComparison.OrdinalIgnoreCase))
+        {
+            s.Accent = "Mint";
+        }
+
         s.FilePath = path;
         s.Save();
         return s;

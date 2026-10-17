@@ -1,15 +1,25 @@
-﻿# 验证全屏悬浮控制条：缩小/放大双向可用、可复位、适配方式可循环
-# 用法：powershell.exe -ExecutionPolicy Bypass -File Invoke-BarTest.ps1 -Exe "路径\投屏Window.exe"
+﻿# 验证悬浮控制条（极简化版）：只留"别处没有"的动作，按钮少了就全摆出来，不再收进"更多"里。
+#
+# 断言：
+#   ① 窗口模式：控制条上就是 截屏 / 录制 / 小窗 三个按钮，没有"更多/展开"这一层
+#   ② 舞台顶栏已经有的按钮（全屏 / 适应 / 缩小 / 放大 / 缩放复位）不再重复出现在控制条上
+#   ③ 小窗按钮是开关：点一下开、再点一下关
+#   ④ 全屏时多一个「退出全屏」（那时舞台顶栏是收起的），点了真能退出并恢复窗口尺寸
+#   ⑤ 缩放搬到舞台顶栏后仍然双向可用（缩小 / 放大都动，百分比跟着变）
+#
+# 用法：
+#   powershell.exe -ExecutionPolicy Bypass -File Invoke-BarTest.ps1 -Exe "路径\投屏Window.exe"
+#   加 -ShotDir 目录可把「窗口模式 / 全屏」两种状态截图存下来（人眼复核用）
 param(
     [Parameter(Mandatory = $true)][string]$Exe,
-    [int]$StartupWaitSeconds = 12
+    [int]$StartupWaitSeconds = 14,
+    [string]$ShotDir = ""
 )
 Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes
 Add-Type @"
 using System;using System.Runtime.InteropServices;
-public class BarCursor {
+public class BarWin {
   [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y);
-  [DllImport("user32.dll")] public static extern int GetSystemMetrics(int i);
   [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);
   private delegate bool EnumProc(IntPtr h, IntPtr p);
   [DllImport("user32.dll")] private static extern bool EnumWindows(EnumProc cb, IntPtr p);
@@ -32,21 +42,17 @@ public class BarCursor {
   }
 }
 "@
-function Show-Bar($win) {
-    # 悬浮条在鼠标靠近**窗口底部**时出现。原先把鼠标放到屏幕最底部（GetSystemMetrics(1)-40），
-    # 而窗口 1120x720 只占屏幕上半部分 —— 那个点根本不在窗口里，条永远不会出现。
-    $r = $win.Current.BoundingRectangle
-    [BarCursor]::SetCursorPos([int]($r.Left + $r.Width / 2), [int]($r.Bottom - 60)) | Out-Null
-    Start-Sleep -Milliseconds 800
-}
+
+$script:fail = 0
+function Ok($t) { Write-Host "  [OK] $t" -ForegroundColor Green }
+function Bad($t) { Write-Host "  [FAIL] $t" -ForegroundColor Red; $script:fail++ }
+function Check($cond, $t) { if ($cond) { Ok $t } else { Bad $t } }
 
 function Find-Window($targetPid, [string]$name = "") {
     $root = [System.Windows.Automation.AutomationElement]::RootElement
     $c = New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::ProcessIdProperty, $targetPid)
     $wins = $root.FindAll([System.Windows.Automation.TreeScope]::Children, $c)
-    foreach ($w in $wins) {
-        if ($name -eq "" -or $w.Current.Name -eq $name) { return $w }
-    }
+    foreach ($w in $wins) { if ($name -eq "" -or $w.Current.Name -eq $name) { return $w } }
     return $null
 }
 
@@ -56,78 +62,148 @@ function Find-ByName($win, [string]$name) {
     return $win.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $c)
 }
 
+function Find-ById($win, [string]$id) {
+    if (-not $win) { return $null }
+    $c = New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::AutomationIdProperty, $id)
+    return $win.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $c)
+}
+
 function Click($el) {
     if (-not $el) { return $false }
     try { $el.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke(); return $true } catch { return $false }
 }
 
-function ZoomText($bar) {
-    # 缩放百分比显示在“缩放复位”左侧的文本块里，直接扫描所有 Text 元素找 xx%
-    $c = New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::ControlTypeProperty, [System.Windows.Automation.ControlType]::Text)
-    $texts = $bar.FindAll([System.Windows.Automation.TreeScope]::Descendants, $c)
-    foreach ($t in $texts) { if ($t.Current.Name -match '^\d+%$') { return $t.Current.Name } }
-    return "?"
+function Text-Of($el) { if ($el) { return $el.Current.Name } else { return "?" } }
+
+# 无边框浮层窗口：按标题从 Win32 拿句柄，再转成自动化元素
+function Bar([int]$targetPid, [string]$title) {
+    $h = [BarWin]::Find($targetPid, $title)
+    if ($h -eq [IntPtr]::Zero) { return $null }
+    return [System.Windows.Automation.AutomationElement]::FromHandle($h)
 }
 
-$p = Start-Process -FilePath $Exe -ArgumentList "--no-intro" -PassThru
-Write-Host "已启动，等待 $StartupWaitSeconds 秒…"
+function Bar-Buttons($bar) {
+    if (-not $bar) { return @() }
+    $c = New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::ControlTypeProperty, [System.Windows.Automation.ControlType]::Button)
+    $found = $bar.FindAll([System.Windows.Automation.TreeScope]::Descendants, $c)
+    $names = @()
+    foreach ($b in $found) { $names += $b.Current.Name }
+    return $names
+}
+
+function Rect-Of($win) {
+    $r = $win.Current.BoundingRectangle
+    return "{0},{1} {2}x{3}" -f [int]$r.X, [int]$r.Y, [int]$r.Width, [int]$r.Height
+}
+
+# 窗口模式常驻；全屏时鼠标靠近底部才出现 —— 点之前先把鼠标放过去
+function Show-Bar($win) {
+    $r = $win.Current.BoundingRectangle
+    [BarWin]::SetCursorPos([int]($r.Left + $r.Width / 2), [int]($r.Bottom - 60)) | Out-Null
+    Start-Sleep -Milliseconds 900
+}
+
+function Save-Shot($win, [string]$name, [int]$pad = 16) {
+    if (-not $ShotDir -or -not $win) { return }
+    try {
+        Add-Type -AssemblyName System.Drawing
+        if (-not (Test-Path $ShotDir)) { New-Item -ItemType Directory -Path $ShotDir -Force | Out-Null }
+        $dir = (Resolve-Path -LiteralPath $ShotDir).Path
+        $r = $win.Current.BoundingRectangle
+        $x = [int][Math]::Max(0, $r.X - $pad); $y = [int][Math]::Max(0, $r.Y - $pad)
+        $w = [int]($r.Width + 2 * $pad); $h = [int]($r.Height + 2 * $pad)
+        $bmp = New-Object System.Drawing.Bitmap $w, $h
+        $g = [System.Drawing.Graphics]::FromImage($bmp)
+        $g.CopyFromScreen($x, $y, 0, 0, (New-Object System.Drawing.Size $w, $h))
+        $path = Join-Path $dir "$name.png"
+        $bmp.Save($path, [System.Drawing.Imaging.ImageFormat]::Png)
+        $g.Dispose(); $bmp.Dispose()
+        Write-Host "  截图：$path"
+    } catch { Write-Host "  截图失败：$_" }
+}
+
+# ============================================================ 起程序
+$p = Start-Process -FilePath $Exe -ArgumentList "--no-intro", "--demo-cast" -PassThru
+Write-Host "已启动（--no-intro --demo-cast），等待 $StartupWaitSeconds 秒…"
 Start-Sleep -Seconds $StartupWaitSeconds
 
 $main = Find-Window $p.Id "投屏Window"
-if (-not $main) { Write-Host "未找到主窗口" -ForegroundColor Red; Stop-Process -Id $p.Id -Force; exit 1 }
-[void][BarCursor]::SetForegroundWindow([IntPtr]$main.Current.NativeWindowHandle)
-Show-Bar $main          # 先把鼠标放进窗口底部，让控制条先出现，才点得到「全屏」
+if (-not $main) { Bad "未找到主窗口"; Stop-Process -Id $p.Id -Force; exit 1 }
+[void][BarWin]::SetForegroundWindow([IntPtr]$main.Current.NativeWindowHandle)
+Show-Bar $main
+
+# ============================================================ ① 窗口模式：三个按钮全摆出来
+Write-Host "`n=== ① 窗口模式：截屏 / 录制 / 小窗 直接全摆出来 ==="
+$bar = Bar $p.Id "控制条"
+if (-not $bar) { Bad "未找到悬浮控制条"; Stop-Process -Id $p.Id -Force; exit 1 }
+
+$windowed = Bar-Buttons $bar
+Write-Host "  按钮：$($windowed -join ' | ')"
+Check ($windowed -contains "截屏") "控制条上有「截屏」"
+Check ($windowed -contains "录制") "控制条上有「录制」"
+Check ($windowed -contains "小窗") "控制条上有「小窗」"
+Check ($windowed.Count -eq 3) "控制条上就 3 个按钮，没有多余的（实际 $($windowed.Count) 个）"
+Check (-not ($windowed -contains "更多操作")) "没有「更多操作」这一层（按钮少，直接全展示）"
+Save-Shot $bar "01-窗口模式"
+
+# ============================================================ ② 不重复舞台顶栏的按钮
+Write-Host "`n=== ② 不该再重复「舞台顶栏已经有了」的按钮 ==="
+foreach ($dup in @("全屏", "退出全屏", "适应", "铺满", "拉伸", "原始", "画面适配", "缩小", "放大", "缩放复位")) {
+    Check (-not ($windowed -contains $dup)) "控制条上没有「$dup」"
+}
+
+# ============================================================ ③ 小窗按钮是开关
+Write-Host "`n=== ③ 「小窗」点一下开、再点一下关 ==="
+Click (Find-ByName $bar "小窗") | Out-Null
+Start-Sleep -Milliseconds 1000
+Check ([bool]([BarWin]::Find($p.Id, "小窗") -ne [IntPtr]::Zero)) "点一下：小窗开了"
+Click (Find-ByName $bar "小窗") | Out-Null
+Start-Sleep -Milliseconds 1000
+Check ([BarWin]::Find($p.Id, "小窗") -eq [IntPtr]::Zero) "再点一下：小窗关了"
+
+# ============================================================ ④ 缩放搬去舞台顶栏后仍然可用
+Write-Host "`n=== ④ 舞台顶栏的缩放（原控制条上的那套）仍双向可用 ==="
+$zoom0 = Text-Of (Find-ById $main "StageZoomText")
+Click (Find-ByName $main "缩小画面") | Out-Null; Start-Sleep -Milliseconds 500
+Click (Find-ByName $main "缩小画面") | Out-Null; Start-Sleep -Milliseconds 700
+$zoomOut = Text-Of (Find-ById $main "StageZoomText")
+Click (Find-ByName $main "放大画面") | Out-Null; Start-Sleep -Milliseconds 500
+Click (Find-ByName $main "放大画面") | Out-Null; Start-Sleep -Milliseconds 700
+$zoomBack = Text-Of (Find-ById $main "StageZoomText")
+Write-Host "  初始 $zoom0 → 两次缩小 $zoomOut → 两次放大 $zoomBack"
+Check ($zoomOut -ne $zoom0) "缩小有效（$zoom0 → $zoomOut）"
+Check ($zoomBack -eq $zoom0) "放大能回到原值（$zoomOut → $zoomBack）"
+
+# ============================================================ ⑤ 全屏：多一个「退出全屏」
+Write-Host "`n=== ⑤ 全屏时多一个「退出全屏」，并真能退出 ==="
+$before = Rect-Of $main
 Click (Find-ByName $main "全屏") | Out-Null
-Start-Sleep -Seconds 3
+Start-Sleep -Seconds 4
 Show-Bar $main
+$bar = Bar $p.Id "控制条"
+if (-not $bar) {
+    Bad "全屏下没找到控制条"
+} else {
+    $fsButtons = Bar-Buttons $bar
+    Write-Host "  全屏下按钮：$($fsButtons -join ' | ')"
+    Check ($fsButtons -contains "退出全屏") "全屏时出现「退出全屏」"
+    Check ($fsButtons.Count -eq 4) "全屏时 4 个按钮（实际 $($fsButtons.Count) 个）"
+    Save-Shot $bar "02-全屏"
+    Click (Find-ByName $bar "退出全屏") | Out-Null
+    Start-Sleep -Seconds 3
+    $main = Find-Window $p.Id "投屏Window"
+    $after = Rect-Of $main
+    Write-Host "  退出全屏：$before → $after"
+    Check ($after -eq $before) "退出全屏后窗口尺寸恢复"
+    $back = Bar-Buttons (Bar $p.Id "控制条")
+    Check (-not ($back -contains "退出全屏")) "回到窗口模式后「退出全屏」又收掉了"
+}
 
-# 悬浮条的窗口标题是「控制条」。注意：这个无边框窗口不在 UIA 根子元素里，
-# 用 UIA 的 Find-Window 永远找不到 —— 必须 Win32 枚举 HWND 再转自动化元素。
-$barH = [BarCursor]::Find($p.Id, "控制条")
-$bar = if ($barH -ne [IntPtr]::Zero) { [System.Windows.Automation.AutomationElement]::FromHandle($barH) } else { $null }
-if (-not $bar) { Write-Host "未找到悬浮控制条" -ForegroundColor Red; Stop-Process -Id $p.Id -Force; exit 1 }
-Write-Host "控制条已出现：$($bar.Current.Name)"
-
-$zoom0 = ZoomText $bar
-Show-Bar $main
-Write-Host "初始缩放：$zoom0"
-
-Click (Find-ByName $bar "缩小") | Out-Null; Start-Sleep -Milliseconds 500
-Click (Find-ByName $bar "缩小") | Out-Null; Start-Sleep -Milliseconds 700
-$zoomOut = ZoomText $bar
-Write-Host "点两次「缩小」后：$zoomOut"
-
-Click (Find-ByName $bar "放大") | Out-Null; Start-Sleep -Milliseconds 500
-Click (Find-ByName $bar "放大") | Out-Null; Start-Sleep -Milliseconds 700
-$zoomBack = ZoomText $bar
-Write-Host "再点两次「放大」后：$zoomBack"
-
-Click (Find-ByName $bar "放大") | Out-Null; Start-Sleep -Milliseconds 700
-$zoomUp = ZoomText $bar
-Write-Host "继续「放大」：$zoomUp"
-
-Click (Find-ByName $bar "缩放复位") | Out-Null; Start-Sleep -Milliseconds 700
-$zoomReset = ZoomText $bar
-Write-Host "点「缩放复位」后：$zoomReset"
-
-$fitBtn = Find-ByName $bar "画面适配"
-Click $fitBtn | Out-Null; Start-Sleep -Milliseconds 600
-$fitConds = New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::ControlTypeProperty, [System.Windows.Automation.ControlType]::Button)
-$fitButtons = $bar.FindAll([System.Windows.Automation.TreeScope]::Descendants, $fitConds)
-$fitNames = @()
-foreach ($b in $fitButtons) { $fitNames += $b.Current.Name }
-Write-Host "控制条上的按钮：$($fitNames -join ' | ')"
-
-# 注：早期版本的控制条有静音按钮，现在的按钮是
-# 退出全屏/拉伸/缩小/放大/缩放复位/截屏/录制/小窗 —— 这里不再断言静音是否存在。
-
-Click (Find-ByName $bar "退出全屏") | Out-Null
-Start-Sleep -Seconds 2
+# ============================================================ 收尾
 $p.CloseMainWindow() | Out-Null
 if (-not $p.WaitForExit(8000)) { $p.Kill(); Write-Host "强制结束" } else { Write-Host "已优雅退出" }
 
-# 判定
-$ok = ($zoomOut -ne $zoom0) -and ($zoomBack -eq $zoom0) -and ($zoomUp -ne $zoom0) -and ($zoomReset -eq $zoom0)
 Write-Host ""
-Write-Host "结论：缩小/放大/复位 $(if ($ok) { '双向可用 OK' } else { '存在异常' })"
-if (-not $ok) { exit 2 }
+if ($script:fail -eq 0) { Write-Host "结论：悬浮控制条极简化 —— 全部通过 OK" -ForegroundColor Green; exit 0 }
+Write-Host "结论：$($script:fail) 项不通过" -ForegroundColor Red
+exit 2

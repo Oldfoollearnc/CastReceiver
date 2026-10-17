@@ -67,6 +67,7 @@ public partial class SettingsWindow : Window
         SegDark.IsChecked = theme.Equals("Dark", StringComparison.OrdinalIgnoreCase);
         SegLight.IsChecked = theme.Equals("Light", StringComparison.OrdinalIgnoreCase);
         SegSystem.IsChecked = theme.Equals("System", StringComparison.OrdinalIgnoreCase);
+        SwMotion.IsChecked = s.UiMotion;
 
         string version = Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "1.0.0";
         TxtVersion.Text = "版本 " + version;
@@ -1394,6 +1395,15 @@ public partial class SettingsWindow : Window
     /// <summary>任何改动都立即生效并保存（不再需要点"保存设置"）。</summary>
     private void Setting_Changed(object sender, RoutedEventArgs e) => AutoSave();
 
+    /// <summary>界面动效总开关：立即生效（不需要重启），并写回配置。</summary>
+    private void Motion_Changed(object sender, RoutedEventArgs e)
+    {
+        bool enabled = SwMotion.IsChecked == true;
+        Motion.SetEnabled(enabled);
+        _host.Settings.UiMotion = enabled;
+        AutoSave();
+    }
+
     /// <summary>
     /// 「电脑控制手机」总开关（设置 → 安全）。**默认关闭**。
     /// 打开才显示"投屏时自动连接"这个子项；关闭时连子项一起收起来，
@@ -1562,6 +1572,8 @@ public partial class SettingsWindow : Window
         s.NotifyOnConnect = SwNotify.IsChecked == true;
         s.GlobalHotkeys = SwHotkeys.IsChecked == true;
         s.UseMica = SwMica.IsChecked == true;
+        s.UiMotion = SwMotion.IsChecked == true;
+        Motion.SetEnabled(s.UiMotion);
         s.AutoFullscreen = SwAutoFullscreen.IsChecked == true;
         s.HideCursorInFullscreen = SwHideCursor.IsChecked == true;
         s.PreventSleep = SwPreventSleep.IsChecked == true;
@@ -1728,6 +1740,8 @@ public partial class SettingsWindow : Window
         _host.Settings.Save();
         _host.Miracast.QualityPreset = tag;
         _host.Miracast.LowLatency = _host.Settings.LowLatency;
+        // AirPlay 的画质是"向手机请求的分辨率"，下一次连接生效（不会踢掉正在投的设备）
+        _host.ApplyAirPlayQuality();
         UpdateQualityButtons(tag);
         if (_host.Miracast.ConnectionCount > 0) _ = _host.Miracast.ReapplyStreamPreferencesAsync();
         TxtSaved.Text = tag switch { "HighQuality" => "已切换为高画质", "Balanced" => "已切换为均衡", _ => "已切换为低延迟" };

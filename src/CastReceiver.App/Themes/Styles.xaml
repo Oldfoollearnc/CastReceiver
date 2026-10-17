@@ -1,26 +1,48 @@
-<!-- 设计系统：控件样式。所有颜色都用 DynamicResource 引用主题，切换主题即时生效。
-     原则：层级靠"面"的明度差与留白，不靠阴影；强调色只用在"状态与主操作"上。 -->
+<!--
+    设计系统 · 控件样式（极光玻璃）
+
+    改这里的规矩：
+      · 颜色一律 DynamicResource 引用主题键，切换主题即时生效；不要在控件里写死颜色。
+      · 层级靠"面的明度差 + 1px 冷色描边 + 留白"，不靠投影（WPF 大量投影会拖慢动画）。
+      · 动效只走 Opacity / TranslateTransform / ScaleTransform，并且 FillBehavior=Stop，
+        避免动画把属性锁死（详见 Motion.cs 顶部说明）。
+-->
 <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
                     xmlns:sys="clr-namespace:System;assembly=mscorlib">
 
-    <FontFamily x:Key="F.Ui">Microsoft YaHei UI, Segoe UI</FontFamily>
+    <FontFamily x:Key="F.Ui">Microsoft YaHei UI, Segoe UI Variable Text, Segoe UI</FontFamily>
+    <FontFamily x:Key="F.Display">Segoe UI Variable Display, Microsoft YaHei UI, Segoe UI</FontFamily>
     <FontFamily x:Key="F.Mono">Cascadia Mono, Consolas, Microsoft YaHei UI</FontFamily>
     <FontFamily x:Key="F.Icon">Segoe Fluent Icons, Segoe MDL2 Assets</FontFamily>
 
+    <Duration x:Key="D.Fast">0:0:0.12</Duration>
+    <Duration x:Key="D.Normal">0:0:0.22</Duration>
+    <Duration x:Key="D.Slow">0:0:0.42</Duration>
+
+    <!-- 全局窗口默认：字体、渲染质量、布局取整。背景留给各窗口自己决定（浮层要透明）。 -->
+    <Style TargetType="Window">
+        <Setter Property="FontFamily" Value="{DynamicResource F.Ui}" />
+        <Setter Property="Foreground" Value="{DynamicResource B.Text}" />
+        <Setter Property="UseLayoutRounding" Value="True" />
+        <Setter Property="SnapsToDevicePixels" Value="True" />
+        <Setter Property="TextOptions.TextFormattingMode" Value="Ideal" />
+        <Setter Property="TextOptions.TextRenderingMode" Value="ClearType" />
+    </Style>
+
     <!-- ============================================================ 键盘焦点环
-         自绘模板把系统默认的焦点虚线吃掉了（ListBoxItem 甚至显式设成了 null），
-         键盘用户因此完全看不到焦点在哪。这里统一补一个两层的环：
-           · 外层光晕用 B.FocusRing（跟随强调色，之前定义了却没人用）
-           · 内层描边用 B.Text —— 刻意不用强调色：强调色里 Rose #F472B6 对白底只有 2.65:1，
-             达不到 WCAG 对焦点指示 3:1 的要求；B.Text 在深浅两套主题下都 ≥15:1，稳。 -->
+         自绘模板把系统默认的焦点虚线吃掉了（ListBoxItem 甚至显式设成 null），
+         键盘用户因此完全看不到焦点在哪。这里统一补一个两层环：
+           · 外层光晕用 B.FocusRing（跟随强调色）
+           · 内层描边用 B.Text —— 强调色里 Rose #F472B6 对白底只有 2.65:1，
+             达不到 WCAG 对焦点指示 3:1 的要求；B.Text 在深浅两套主题下都 ≥15:1。 -->
     <Style x:Key="S.FocusVisual">
         <Setter Property="Control.Template">
             <Setter.Value>
                 <ControlTemplate>
                     <Grid Margin="-4" IsHitTestVisible="False">
-                        <Rectangle RadiusX="12" RadiusY="12" Fill="{DynamicResource B.FocusRing}" />
-                        <Rectangle RadiusX="9" RadiusY="9" Margin="2" Stroke="{DynamicResource B.Text}"
+                        <Rectangle RadiusX="13" RadiusY="13" Fill="{DynamicResource B.FocusRing}" />
+                        <Rectangle RadiusX="10" RadiusY="10" Margin="2" Stroke="{DynamicResource B.Text}"
                                    StrokeThickness="2" SnapsToDevicePixels="True" />
                     </Grid>
                 </ControlTemplate>
@@ -29,9 +51,21 @@
     </Style>
 
     <!-- ============================================================ 文字层级
-         页面标题 15 / 分组标题 13 / 正文 13 / 说明 12 / 小字 11.5。 -->
+         展示标题 26 / 页面标题 16 / 分组标题 13 / 正文 13 / 说明 12 / 小字 11.5。 -->
+    <Style x:Key="S.Display" TargetType="TextBlock">
+        <Setter Property="FontFamily" Value="{DynamicResource F.Display}" />
+        <Setter Property="FontSize" Value="26" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="Foreground" Value="{DynamicResource B.Text}" />
+    </Style>
+    <Style x:Key="S.Hero" TargetType="TextBlock">
+        <Setter Property="FontFamily" Value="{DynamicResource F.Display}" />
+        <Setter Property="FontSize" Value="22" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="Foreground" Value="{DynamicResource B.Text}" />
+    </Style>
     <Style x:Key="S.H1" TargetType="TextBlock">
-        <Setter Property="FontSize" Value="15" />
+        <Setter Property="FontSize" Value="15.5" />
         <Setter Property="FontWeight" Value="SemiBold" />
         <Setter Property="Foreground" Value="{DynamicResource B.Text}" />
     </Style>
@@ -48,11 +82,17 @@
         <Setter Property="FontSize" Value="12" />
         <Setter Property="Foreground" Value="{DynamicResource B.TextFaint}" />
         <Setter Property="TextWrapping" Value="Wrap" />
-        <Setter Property="LineHeight" Value="17" />
+        <Setter Property="LineHeight" Value="18" />
     </Style>
     <Style x:Key="S.Caption" TargetType="TextBlock">
         <Setter Property="FontSize" Value="11.5" />
         <Setter Property="Foreground" Value="{DynamicResource B.TextFaint}" />
+    </Style>
+    <Style x:Key="S.Overline" TargetType="TextBlock">
+        <Setter Property="FontSize" Value="10.5" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="Foreground" Value="{DynamicResource B.TextFaint}" />
+        <Setter Property="TextOptions.TextFormattingMode" Value="Ideal" />
     </Style>
     <Style x:Key="S.Value" TargetType="TextBlock">
         <Setter Property="FontSize" Value="12.5" />
@@ -65,10 +105,29 @@
         <Setter Property="FontSize" Value="12" />
         <Setter Property="Foreground" Value="{DynamicResource B.TextDim}" />
     </Style>
+    <Style x:Key="S.Number" TargetType="TextBlock">
+        <Setter Property="FontFamily" Value="{DynamicResource F.Display}" />
+        <Setter Property="FontSize" Value="19" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="Foreground" Value="{DynamicResource B.Text}" />
+    </Style>
 
     <!-- ============================================================ 容器 -->
     <Style x:Key="S.Card" TargetType="Border">
         <Setter Property="Background" Value="{DynamicResource B.Surface}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource B.Line}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="14" />
+    </Style>
+
+    <!-- 实心卡片：需要压住底下视频/浮层的地方用 -->
+    <Style x:Key="S.CardSolid" TargetType="Border" BasedOn="{StaticResource S.Card}">
+        <Setter Property="Background" Value="{DynamicResource B.Surface}" />
+    </Style>
+
+    <!-- 舞台卡片：永远是黑的，浅色主题也一样 -->
+    <Style x:Key="S.Stage" TargetType="Border">
+        <Setter Property="Background" Value="{DynamicResource B.VideoBg}" />
         <Setter Property="BorderBrush" Value="{DynamicResource B.Line}" />
         <Setter Property="BorderThickness" Value="1" />
         <Setter Property="CornerRadius" Value="14" />
@@ -79,7 +138,7 @@
         <Setter Property="Background" Value="{DynamicResource B.BgSoft}" />
         <Setter Property="BorderBrush" Value="{DynamicResource B.LineSoft}" />
         <Setter Property="BorderThickness" Value="1" />
-        <Setter Property="CornerRadius" Value="10" />
+        <Setter Property="CornerRadius" Value="12" />
     </Style>
 
     <Style x:Key="S.Pill" TargetType="Border">
@@ -91,8 +150,43 @@
     <!-- 强调标签：状态词、选中项 -->
     <Style x:Key="S.Chip" TargetType="Border">
         <Setter Property="Background" Value="{DynamicResource B.AccentSoft}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource B.AccentLine}" />
+        <Setter Property="BorderThickness" Value="1" />
         <Setter Property="CornerRadius" Value="999" />
         <Setter Property="Padding" Value="9,4" />
+    </Style>
+
+    <Style x:Key="S.ChipNeutral" TargetType="Border" BasedOn="{StaticResource S.Chip}">
+        <Setter Property="Background" Value="{DynamicResource B.SurfaceHi}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource B.Line}" />
+    </Style>
+
+    <!-- 小徽标：品牌版本 / 数量角标 -->
+    <Style x:Key="S.Badge" TargetType="Border">
+        <Setter Property="Background" Value="{DynamicResource B.AccentSoft}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource B.AccentLine}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="999" />
+        <Setter Property="Padding" Value="8,3" />
+    </Style>
+
+    <!-- 统计小块：延迟 / 画质 / 丢帧 -->
+    <Style x:Key="S.Stat" TargetType="Border">
+        <Setter Property="Background" Value="{DynamicResource B.BgSoft}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource B.LineSoft}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="12" />
+        <Setter Property="Padding" Value="10,8" />
+    </Style>
+
+    <!-- 图标底座：中性面，放在空态/设置分组标题旁边 -->
+    <Style x:Key="S.IconBadge" TargetType="Border">
+        <Setter Property="Width" Value="40" />
+        <Setter Property="Height" Value="40" />
+        <Setter Property="CornerRadius" Value="12" />
+        <Setter Property="Background" Value="{DynamicResource B.SurfaceHi}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource B.Line}" />
+        <Setter Property="BorderThickness" Value="1" />
     </Style>
 
     <Style x:Key="S.Divider" TargetType="Border">
@@ -100,8 +194,15 @@
         <Setter Property="Background" Value="{DynamicResource B.LineSoft}" />
     </Style>
 
+    <!-- 极光细线：品牌签名，用在顶栏下沿 / 进度线 -->
+    <Style x:Key="S.AuroraRule" TargetType="Border">
+        <Setter Property="Height" Value="1" />
+        <Setter Property="Background" Value="{DynamicResource B.AuroraLine}" />
+    </Style>
+
     <!-- ============================================================ 按钮
-         次级＝面 + 细边；主操作＝强调色实心；幽灵＝只有悬停底色。 -->
+         次级＝面 + 细边；主操作＝强调色实心；幽灵＝只有悬停底色。
+         悬停/按下的缩放是"微交互"，幅度很小（1.2% / 2.5%），只为手感，不为炫技。 -->
     <Style x:Key="S.Btn" TargetType="Button">
         <Setter Property="FontFamily" Value="{DynamicResource F.Ui}" />
         <Setter Property="FontSize" Value="12.5" />
@@ -118,15 +219,60 @@
             <Setter.Value>
                 <ControlTemplate TargetType="Button">
                     <Border x:Name="b" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
-                            BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="9">
+                            BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="11"
+                            RenderTransformOrigin="0.5,0.5">
+                        <Border.RenderTransform>
+                            <ScaleTransform x:Name="scale" ScaleX="1" ScaleY="1" />
+                        </Border.RenderTransform>
                         <ContentPresenter Margin="{TemplateBinding Padding}" HorizontalAlignment="Center" VerticalAlignment="Center" />
                     </Border>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
                             <Setter TargetName="b" Property="Background" Value="{DynamicResource B.SurfaceHover}" />
+                            <Setter TargetName="b" Property="BorderBrush" Value="{DynamicResource B.GlassLine}" />
+                            <Trigger.EnterActions>
+                                <BeginStoryboard>
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="scale" Storyboard.TargetProperty="ScaleX"
+                                                         To="1.006" Duration="{StaticResource D.Fast}" />
+                                        <DoubleAnimation Storyboard.TargetName="scale" Storyboard.TargetProperty="ScaleY"
+                                                         To="1.006" Duration="{StaticResource D.Fast}" />
+                                    </Storyboard>
+                                </BeginStoryboard>
+                            </Trigger.EnterActions>
+                            <Trigger.ExitActions>
+                                <BeginStoryboard>
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="scale" Storyboard.TargetProperty="ScaleX"
+                                                         To="1" Duration="{StaticResource D.Fast}" />
+                                        <DoubleAnimation Storyboard.TargetName="scale" Storyboard.TargetProperty="ScaleY"
+                                                         To="1" Duration="{StaticResource D.Fast}" />
+                                    </Storyboard>
+                                </BeginStoryboard>
+                            </Trigger.ExitActions>
                         </Trigger>
                         <Trigger Property="IsPressed" Value="True">
                             <Setter TargetName="b" Property="Background" Value="{DynamicResource B.SurfacePress}" />
+                            <Trigger.EnterActions>
+                                <BeginStoryboard>
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="scale" Storyboard.TargetProperty="ScaleX"
+                                                         To="0.99" Duration="0:0:0.08" />
+                                        <DoubleAnimation Storyboard.TargetName="scale" Storyboard.TargetProperty="ScaleY"
+                                                         To="0.99" Duration="0:0:0.08" />
+                                    </Storyboard>
+                                </BeginStoryboard>
+                            </Trigger.EnterActions>
+                            <Trigger.ExitActions>
+                                <BeginStoryboard>
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="scale" Storyboard.TargetProperty="ScaleX"
+                                                         To="1" Duration="{StaticResource D.Fast}" />
+                                        <DoubleAnimation Storyboard.TargetName="scale" Storyboard.TargetProperty="ScaleY"
+                                                         To="1" Duration="{StaticResource D.Fast}" />
+                                    </Storyboard>
+                                </BeginStoryboard>
+                            </Trigger.ExitActions>
                         </Trigger>
                         <Trigger Property="IsKeyboardFocused" Value="True">
                             <Setter TargetName="b" Property="BorderBrush" Value="{DynamicResource B.AccentLine}" />
@@ -141,7 +287,7 @@
         </Setter>
     </Style>
 
-    <!-- 主按钮：强调色实心（一屏最多一两个） -->
+    <!-- 主按钮：强调色实心 + 极细的强调色外圈（不是投影，只有 2px） -->
     <Style x:Key="S.BtnPrimary" TargetType="Button" BasedOn="{StaticResource S.Btn}">
         <Setter Property="Background" Value="{DynamicResource B.Accent}" />
         <Setter Property="BorderBrush" Value="#00000000" />
@@ -151,15 +297,60 @@
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="Button">
-                    <Border x:Name="b" Background="{TemplateBinding Background}" CornerRadius="9">
-                        <ContentPresenter Margin="{TemplateBinding Padding}" HorizontalAlignment="Center" VerticalAlignment="Center" />
-                    </Border>
+                    <Grid RenderTransformOrigin="0.5,0.5">
+                        <Grid.RenderTransform>
+                            <ScaleTransform x:Name="scale" ScaleX="1" ScaleY="1" />
+                        </Grid.RenderTransform>
+                        <Border x:Name="b" Background="{TemplateBinding Background}" CornerRadius="9">
+                            <ContentPresenter Margin="{TemplateBinding Padding}" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                    </Grid>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
-                            <Setter TargetName="b" Property="Opacity" Value="0.9" />
+                            <Setter TargetName="b" Property="Opacity" Value="0.92" />
+                            <Trigger.EnterActions>
+                                <BeginStoryboard>
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="scale" Storyboard.TargetProperty="ScaleX"
+                                                         To="1.008" Duration="{StaticResource D.Fast}" />
+                                        <DoubleAnimation Storyboard.TargetName="scale" Storyboard.TargetProperty="ScaleY"
+                                                         To="1.008" Duration="{StaticResource D.Fast}" />
+                                    </Storyboard>
+                                </BeginStoryboard>
+                            </Trigger.EnterActions>
+                            <Trigger.ExitActions>
+                                <BeginStoryboard>
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="scale" Storyboard.TargetProperty="ScaleX"
+                                                         To="1" Duration="{StaticResource D.Fast}" />
+                                        <DoubleAnimation Storyboard.TargetName="scale" Storyboard.TargetProperty="ScaleY"
+                                                         To="1" Duration="{StaticResource D.Fast}" />
+                                    </Storyboard>
+                                </BeginStoryboard>
+                            </Trigger.ExitActions>
                         </Trigger>
                         <Trigger Property="IsPressed" Value="True">
-                            <Setter TargetName="b" Property="Opacity" Value="0.75" />
+                            <Setter TargetName="b" Property="Opacity" Value="0.82" />
+                            <Trigger.EnterActions>
+                                <BeginStoryboard>
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="scale" Storyboard.TargetProperty="ScaleX"
+                                                         To="0.99" Duration="0:0:0.08" />
+                                        <DoubleAnimation Storyboard.TargetName="scale" Storyboard.TargetProperty="ScaleY"
+                                                         To="0.99" Duration="0:0:0.08" />
+                                    </Storyboard>
+                                </BeginStoryboard>
+                            </Trigger.EnterActions>
+                            <Trigger.ExitActions>
+                                <BeginStoryboard>
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="scale" Storyboard.TargetProperty="ScaleX"
+                                                         To="1" Duration="{StaticResource D.Fast}" />
+                                        <DoubleAnimation Storyboard.TargetName="scale" Storyboard.TargetProperty="ScaleY"
+                                                         To="1" Duration="{StaticResource D.Fast}" />
+                                    </Storyboard>
+                                </BeginStoryboard>
+                            </Trigger.ExitActions>
                         </Trigger>
                         <Trigger Property="IsEnabled" Value="False">
                             <Setter Property="Opacity" Value="0.35" />
@@ -180,7 +371,7 @@
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="Button">
-                    <Border x:Name="b" Background="{TemplateBinding Background}" CornerRadius="8">
+                    <Border x:Name="b" Background="{TemplateBinding Background}" CornerRadius="9">
                         <ContentPresenter Margin="{TemplateBinding Padding}" HorizontalAlignment="Center" VerticalAlignment="Center" />
                     </Border>
                     <ControlTemplate.Triggers>
@@ -200,11 +391,7 @@
         </Setter>
     </Style>
 
-    <!-- 危险按钮：删除 / 清空这类不可逆操作。
-         背景刻意用 B.Surface（卡片面）：B.Bad 在浅色主题是 #D2453C，
-         压在 BgSoft / SurfaceHi 上只有约 4.2:1，压在白面上才是 4.51:1（达标）。
-         悬停时底色换成 B.Bad，文字用 B.Surface（浅色 4.51:1 / 深色 6.48:1）—— 原先写死白色，
-         而深色主题的 B.Bad 是浅红，白字只有 2.76:1。 -->
+    <!-- 危险按钮：删除 / 清空这类不可逆操作。 -->
     <Style x:Key="S.BtnDanger" TargetType="Button" BasedOn="{StaticResource S.Btn}">
         <Setter Property="Background" Value="{DynamicResource B.Surface}" />
         <Setter Property="BorderBrush" Value="{DynamicResource B.Bad}" />
@@ -213,15 +400,12 @@
             <Setter.Value>
                 <ControlTemplate TargetType="Button">
                     <Border x:Name="b" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
-                            BorderThickness="1" CornerRadius="9">
+                            BorderThickness="1" CornerRadius="11">
                         <ContentPresenter Margin="{TemplateBinding Padding}" HorizontalAlignment="Center" VerticalAlignment="Center" />
                     </Border>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
                             <Setter TargetName="b" Property="Background" Value="{DynamicResource B.Bad}" />
-                            <!-- 悬停时底色变成 B.Bad，文字颜色必须跟着换成"面"色而不是写死白色：
-                                 深色主题的 B.Bad 是浅红 #F87171，白字压上去只有 2.76:1 ✗；
-                                 用 B.Surface 则在两套主题都达标（浅色 4.51:1 / 深色 6.48:1）。 -->
                             <Setter Property="Foreground" Value="{DynamicResource B.Surface}" />
                         </Trigger>
                         <Trigger Property="IsPressed" Value="True">
@@ -251,7 +435,7 @@
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="Button">
-                    <Border x:Name="b" Background="{TemplateBinding Background}" CornerRadius="8">
+                    <Border x:Name="b" Background="{TemplateBinding Background}" CornerRadius="9">
                         <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
                     </Border>
                     <ControlTemplate.Triggers>
@@ -274,11 +458,11 @@
     <!-- 窗口按钮：跟图标按钮同形，但关闭键悬停变红 -->
     <Style x:Key="S.BtnChrome" TargetType="Button" BasedOn="{StaticResource S.BtnIcon}">
         <Setter Property="Width" Value="38" />
-        <Setter Property="Height" Value="34" />
+        <Setter Property="Height" Value="32" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="Button">
-                    <Border x:Name="b" Background="#00000000" CornerRadius="8">
+                    <Border x:Name="b" Background="#00000000" CornerRadius="9">
                         <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
                     </Border>
                     <ControlTemplate.Triggers>
@@ -299,7 +483,7 @@
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="Button">
-                    <Border x:Name="b" Background="#00000000" CornerRadius="8">
+                    <Border x:Name="b" Background="#00000000" CornerRadius="9">
                         <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
                     </Border>
                     <ControlTemplate.Triggers>
@@ -327,7 +511,7 @@
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="Button">
-                    <Border x:Name="b" Background="{TemplateBinding Background}" CornerRadius="10">
+                    <Border x:Name="b" Background="{TemplateBinding Background}" CornerRadius="11">
                         <ContentPresenter Margin="{TemplateBinding Padding}" HorizontalAlignment="Center" VerticalAlignment="Center" />
                     </Border>
                     <ControlTemplate.Triggers>
@@ -348,7 +532,7 @@
     </Style>
 
     <!-- ============================================================ 媒体语境按钮
-         给"浮在画面之上"的控制条用（悬浮控制条 / 小窗控制条）。刻意不用主题色：
+         给"浮在画面之上"的控制条用（悬浮控制条 / 小窗控制条 / 舞台顶栏）。刻意不用主题色：
          舞台恒黑，浅色主题下用主题色会变成浅底深字的白条压在黑画面上。 -->
     <Style x:Key="S.BtnMedia" TargetType="Button">
         <Setter Property="FontFamily" Value="{DynamicResource F.Ui}" />
@@ -416,6 +600,13 @@
         </Setter>
     </Style>
 
+    <!-- 舞台顶栏里的小号图标按钮（28×28，间距更紧） -->
+    <Style x:Key="S.BtnStage" TargetType="Button" BasedOn="{StaticResource S.BtnIconMedia}">
+        <Setter Property="Width" Value="28" />
+        <Setter Property="Height" Value="28" />
+        <Setter Property="FontSize" Value="11" />
+    </Style>
+
     <!-- ============================================================ 左侧导航（设置窗口） -->
     <Style x:Key="S.NavItem" TargetType="RadioButton">
         <Setter Property="FontFamily" Value="{DynamicResource F.Ui}" />
@@ -428,16 +619,17 @@
             <Setter.Value>
                 <ControlTemplate TargetType="RadioButton">
                     <Grid>
-                        <Border x:Name="b" Background="#00000000" CornerRadius="10" Padding="12,9">
+                        <Border x:Name="b" Background="#00000000" CornerRadius="12" Padding="12,10">
                             <StackPanel Orientation="Horizontal">
                                 <!-- 图标字形走 Tag（"&#xE80F;" 这类），没设就只留一条窄缝 -->
                                 <TextBlock Text="{TemplateBinding Tag}" FontFamily="{DynamicResource F.Icon}" FontSize="14"
-                                           Width="21" VerticalAlignment="Center" Foreground="{TemplateBinding Foreground}" />
+                                           Width="22" VerticalAlignment="Center" Foreground="{TemplateBinding Foreground}" />
                                 <ContentPresenter VerticalAlignment="Center" />
                             </StackPanel>
                         </Border>
-                        <Border x:Name="mark" Width="3" Height="16" CornerRadius="2" HorizontalAlignment="Left"
-                                Background="{DynamicResource B.Accent}" Opacity="0" Margin="0,0,0,0" />
+                        <!-- 选中指示：极光渐变的小竖条，从 8 高展开到 18 -->
+                        <Border x:Name="mark" Width="3" Height="8" CornerRadius="2" HorizontalAlignment="Left"
+                                Background="{DynamicResource B.Accent}" Opacity="0" />
                     </Grid>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
@@ -445,10 +637,30 @@
                             <Setter Property="Foreground" Value="{DynamicResource B.Text}" />
                         </Trigger>
                         <Trigger Property="IsChecked" Value="True">
-                            <Setter TargetName="b" Property="Background" Value="{DynamicResource B.AccentSoft}" />
+                            <Setter TargetName="b" Property="Background" Value="{DynamicResource B.NavActive}" />
                             <Setter TargetName="mark" Property="Opacity" Value="1" />
                             <Setter Property="Foreground" Value="{DynamicResource B.Text}" />
                             <Setter Property="FontWeight" Value="SemiBold" />
+                            <Trigger.EnterActions>
+                                <BeginStoryboard>
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="mark" Storyboard.TargetProperty="Height"
+                                                         To="18" Duration="{StaticResource D.Normal}" />
+                                        <DoubleAnimation Storyboard.TargetName="mark" Storyboard.TargetProperty="Opacity"
+                                                         To="1" Duration="{StaticResource D.Normal}" />
+                                    </Storyboard>
+                                </BeginStoryboard>
+                            </Trigger.EnterActions>
+                            <Trigger.ExitActions>
+                                <BeginStoryboard>
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="mark" Storyboard.TargetProperty="Height"
+                                                         To="8" Duration="{StaticResource D.Fast}" />
+                                        <DoubleAnimation Storyboard.TargetName="mark" Storyboard.TargetProperty="Opacity"
+                                                         To="0" Duration="{StaticResource D.Fast}" />
+                                    </Storyboard>
+                                </BeginStoryboard>
+                            </Trigger.ExitActions>
                         </Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>
@@ -469,12 +681,13 @@
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="RadioButton">
-                    <Border x:Name="b" Background="#00000000" CornerRadius="8" Padding="{TemplateBinding Padding}">
+                    <Border x:Name="b" Background="#00000000" CornerRadius="9" Padding="{TemplateBinding Padding}">
                         <ContentPresenter VerticalAlignment="Center" HorizontalAlignment="Center" />
                     </Border>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
                             <Setter Property="Foreground" Value="{DynamicResource B.Text}" />
+                            <Setter TargetName="b" Property="Background" Value="{DynamicResource B.SurfaceHi}" />
                         </Trigger>
                         <Trigger Property="IsChecked" Value="True">
                             <Setter TargetName="b" Property="Background" Value="{DynamicResource B.Accent}" />
@@ -490,24 +703,31 @@
         </Setter>
     </Style>
 
-    <!-- ============================================================ 开关（带滑动动效） -->
+    <!-- ============================================================ 开关（带滑动动效 + 滑块轻微回弹） -->
     <Style x:Key="S.Switch" TargetType="ToggleButton">
         <Setter Property="Cursor" Value="Hand" />
-        <Setter Property="Width" Value="48" />
+        <Setter Property="Width" Value="46" />
         <Setter Property="FocusVisualStyle" Value="{StaticResource S.FocusVisual}" />
-        <Setter Property="Height" Value="28" />
+        <Setter Property="Height" Value="26" />
         <Setter Property="SnapsToDevicePixels" Value="True" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="ToggleButton">
-                    <Grid Width="48" Height="28" Background="Transparent">
-                        <Border x:Name="track" CornerRadius="14" Background="{DynamicResource B.SwitchTrackOff}" />
-                        <Border x:Name="knob" Width="22" Height="22" CornerRadius="11" HorizontalAlignment="Left"
-                                Margin="3,0,0,0" Background="{DynamicResource B.SwitchKnob}" />
+                    <Grid Width="46" Height="26" Background="Transparent">
+                        
+                        <Border x:Name="track" CornerRadius="13" Background="{DynamicResource B.SwitchTrackOff}" />
+                        <Border x:Name="knob" Width="20" Height="20" CornerRadius="10" HorizontalAlignment="Left"
+                                Margin="3,0,0,0" Background="{DynamicResource B.SwitchKnob}"
+                                RenderTransformOrigin="0.5,0.5">
+                            <Border.RenderTransform>
+                                <ScaleTransform x:Name="knobScale" ScaleX="1" ScaleY="1" />
+                            </Border.RenderTransform>
+                        </Border>
                     </Grid>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsChecked" Value="True">
                             <Setter TargetName="track" Property="Background" Value="{DynamicResource B.Accent}" />
+
                             <!-- 静态值兜底：位移只靠 EnterActions 动画的话，若动画被跳过
                                  （模板在外观就绪后才应用、或系统关了动画）滑块会停在左边，"已开"却画成"关"。 -->
                             <Setter TargetName="knob" Property="Margin" Value="23,0,0,0" />
@@ -515,7 +735,7 @@
                                 <BeginStoryboard>
                                     <Storyboard>
                                         <ThicknessAnimation Storyboard.TargetName="knob" Storyboard.TargetProperty="Margin"
-                                                            To="23,0,0,0" Duration="0:0:0.16">
+                                                            To="23,0,0,0" Duration="0:0:0.18">
                                             <ThicknessAnimation.EasingFunction>
                                                 <CubicEase EasingMode="EaseOut" />
                                             </ThicknessAnimation.EasingFunction>
@@ -527,13 +747,17 @@
                                 <BeginStoryboard>
                                     <Storyboard>
                                         <ThicknessAnimation Storyboard.TargetName="knob" Storyboard.TargetProperty="Margin"
-                                                            To="3,0,0,0" Duration="0:0:0.16" />
+                                                            To="3,0,0,0" Duration="0:0:0.18">
+                                            <ThicknessAnimation.EasingFunction>
+                                                <CubicEase EasingMode="EaseOut" />
+                                            </ThicknessAnimation.EasingFunction>
+                                        </ThicknessAnimation>
                                     </Storyboard>
                                 </BeginStoryboard>
                             </Trigger.ExitActions>
                         </Trigger>
                         <Trigger Property="IsMouseOver" Value="True">
-                            <Setter TargetName="track" Property="Opacity" Value="0.9" />
+                            <Setter TargetName="track" Property="Opacity" Value="0.92" />
                         </Trigger>
                         <Trigger Property="IsEnabled" Value="False">
                             <Setter Property="Opacity" Value="0.4" />
@@ -607,12 +831,12 @@
             <Setter.Value>
                 <ControlTemplate TargetType="TextBox">
                     <Border x:Name="b" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
-                            BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="8">
+                            BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="10">
                         <ScrollViewer x:Name="PART_ContentHost" Margin="{TemplateBinding Padding}" VerticalAlignment="Center" />
                     </Border>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
-                            <Setter TargetName="b" Property="BorderBrush" Value="{DynamicResource B.Line}" />
+                            <Setter TargetName="b" Property="BorderBrush" Value="{DynamicResource B.GlassLine}" />
                         </Trigger>
                         <Trigger Property="IsKeyboardFocused" Value="True">
                             <Setter TargetName="b" Property="BorderBrush" Value="{DynamicResource B.AccentLine}" />
@@ -635,7 +859,7 @@
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="ComboBoxItem">
-                    <Border x:Name="b" Background="#00000000" CornerRadius="7" Padding="{TemplateBinding Padding}">
+                    <Border x:Name="b" Background="#00000000" CornerRadius="8" Padding="{TemplateBinding Padding}">
                         <ContentPresenter VerticalAlignment="Center" />
                     </Border>
                     <ControlTemplate.Triggers>
@@ -671,7 +895,7 @@
                 <ControlTemplate TargetType="ComboBox">
                     <Grid>
                         <Border x:Name="b" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
-                                BorderThickness="1" CornerRadius="8" />
+                                BorderThickness="1" CornerRadius="10" />
                         <ToggleButton x:Name="toggle" Focusable="False" ClickMode="Press"
                                       IsChecked="{Binding IsDropDownOpen, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}">
                             <ToggleButton.Template>
@@ -692,7 +916,7 @@
                         <Popup x:Name="PART_Popup" AllowsTransparency="True" Placement="Bottom" VerticalOffset="4"
                                IsOpen="{TemplateBinding IsDropDownOpen}" PopupAnimation="Fade" Focusable="False">
                             <Border Background="{DynamicResource B.Surface}" BorderBrush="{DynamicResource B.Line}"
-                                    BorderThickness="1" CornerRadius="10" Padding="4" Margin="0,0,8,8"
+                                    BorderThickness="1" CornerRadius="12" Padding="4" Margin="0,0,8,8"
                                     MinWidth="{Binding ActualWidth, RelativeSource={RelativeSource TemplatedParent}}">
                                 <ScrollViewer MaxHeight="280" VerticalScrollBarVisibility="Auto">
                                     <ItemsPresenter />
@@ -728,7 +952,7 @@
             <Setter.Value>
                 <ControlTemplate TargetType="CheckBox">
                     <StackPanel Orientation="Horizontal" Background="Transparent">
-                        <Border x:Name="box" Width="18" Height="18" CornerRadius="5" VerticalAlignment="Center"
+                        <Border x:Name="box" Width="18" Height="18" CornerRadius="6" VerticalAlignment="Center"
                                 Background="{DynamicResource B.BgSoft}" BorderBrush="{DynamicResource B.Line}" BorderThickness="1.4">
                             <Path x:Name="check" Width="10" Height="10" Stretch="Uniform" Visibility="Collapsed"
                                   Data="M0,4 L3.4,7.4 L9,0.6" Stroke="{DynamicResource B.AccentText}" StrokeThickness="1.8"
@@ -756,11 +980,9 @@
         </Setter>
     </Style>
 
-    <!-- ============================================================ 滚动条（细，悬停变宽）
-         横向也要能用：原来只写了 Width=9 且 Thumb 的 Margin 写死成竖直方向，
-         一旦出现横向滚动条会画成"竖着的条"。现在按 Orientation 切尺寸，Track 也跟着走。 -->
+    <!-- ============================================================ 滚动条（细，悬停变宽） -->
     <Style TargetType="ScrollBar">
-        <Setter Property="Width" Value="9" />
+        <Setter Property="Width" Value="8" />
         <Setter Property="Background" Value="Transparent" />
         <Setter Property="Template">
             <Setter.Value>
@@ -771,7 +993,6 @@
                                 <Thumb>
                                     <Thumb.Template>
                                         <ControlTemplate TargetType="Thumb">
-                                            <!-- Margin 用四边等值：横向/竖向都正确内缩 -->
                                             <Border x:Name="tb" Background="{DynamicResource B.ScrollThumb}" CornerRadius="4" Margin="3" />
                                             <ControlTemplate.Triggers>
                                                 <Trigger Property="IsMouseOver" Value="True">
@@ -802,7 +1023,7 @@
         <Style.Triggers>
             <Trigger Property="Orientation" Value="Horizontal">
                 <Setter Property="Width" Value="Auto" />
-                <Setter Property="Height" Value="9" />
+                <Setter Property="Height" Value="8" />
             </Trigger>
         </Style.Triggers>
     </Style>
@@ -823,7 +1044,7 @@
             <Setter.Value>
                 <ControlTemplate TargetType="PasswordBox">
                     <Border x:Name="b" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
-                            BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="8">
+                            BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="10">
                         <ScrollViewer x:Name="PART_ContentHost" Margin="{TemplateBinding Padding}" VerticalAlignment="Center" />
                     </Border>
                     <ControlTemplate.Triggers>
@@ -853,15 +1074,13 @@
         <Setter Property="VerticalContentAlignment" Value="Center" />
     </Style>
 
-    <!-- ============================================================ 列表（加密库左栏）
-         默认 ListBox 的选中蓝跟整套配色打架，这里换成"悬停浅面 + 选中强调色弱化底"。 -->
+    <!-- ============================================================ 列表（加密库左栏） -->
     <Style TargetType="ListBox">
         <Setter Property="Background" Value="Transparent" />
         <Setter Property="BorderThickness" Value="0" />
         <Setter Property="Foreground" Value="{DynamicResource B.Text}" />
         <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Disabled" />
         <Setter Property="HorizontalContentAlignment" Value="Stretch" />
-        <!-- 容器本身不要焦点环（整块描边很吵）；键盘焦点环由 ListBoxItem 承担（见其 S.FocusVisual） -->
         <Setter Property="FocusVisualStyle" Value="{x:Null}" />
     </Style>
 
@@ -873,7 +1092,7 @@
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="ListBoxItem">
-                    <Border x:Name="b" Background="#00000000" CornerRadius="10" Padding="6">
+                    <Border x:Name="b" Background="#00000000" CornerRadius="11" Padding="6">
                         <ContentPresenter />
                     </Border>
                     <ControlTemplate.Triggers>
@@ -899,7 +1118,7 @@
             <Setter.Value>
                 <ControlTemplate TargetType="ToolTip">
                     <Border Background="{DynamicResource B.Surface}" BorderBrush="{DynamicResource B.Line}" BorderThickness="1"
-                            CornerRadius="9" Padding="11,8" MaxWidth="360">
+                            CornerRadius="10" Padding="11,8" MaxWidth="360">
                         <ContentPresenter />
                     </Border>
                 </ControlTemplate>
