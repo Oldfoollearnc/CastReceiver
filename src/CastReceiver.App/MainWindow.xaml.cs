@@ -901,9 +901,9 @@ public partial class MainWindow : Window
         ApplyVolumeToHosts();
         // 侧栏的收起状态也来自设置（收起后画面铺满整个宽度；把手仍留在窗口右缘）
         SetSidebarCollapsed(s.SideCollapsed, animate: false);
-        // 底栏只在窗口模式可见（全屏时 StatusBarRow 被折叠），所以这里提示 F11 进入全屏即可；
-        // 原先写的「Esc 退出全屏」在窗口模式下按了没有反应，属于误导。
-        TxtHint.Text = "F11 进入全屏 · Ctrl+Alt+P 遮挡";
+        // 底栏只在窗口模式可见（全屏时 StatusBarRow 被折叠），所以这里提示"怎么进全屏"即可；
+        // 退出全屏的提示挂在悬浮条上（窗口模式下按 Esc 没反应，写在这里属于误导）。
+        TxtHint.Text = "双击画面 / F11 进入全屏 · Ctrl+Alt+P 遮挡";
     }
 
     private void HookHostEvents()
@@ -1614,7 +1614,13 @@ public partial class MainWindow : Window
     }
     private void BtnClose_Click(object sender, RoutedEventArgs e) => Close();
 
-    private void BtnSettings_Click(object sender, RoutedEventArgs e)
+    private void BtnSettings_Click(object sender, RoutedEventArgs e) => OpenSettings();
+
+    /// <summary>
+    /// 打开设置窗口（顶栏按钮与悬浮条右键菜单共用）。关掉之后要把设置重新读回界面：
+    /// 密度、适配、音量、外观、状态浮层都可能在里面被改过。
+    /// </summary>
+    public void OpenSettings()
     {
         var win = new SettingsWindow(_host, RenderChannelProbeAsync) { Owner = this };
         win.ShowDialog();
@@ -2968,8 +2974,11 @@ public partial class MainWindow : Window
             _bar.RecordRequested += ToggleRecording;
             _bar.MiniWindowRequested += ToggleMiniWindow;
             _bar.ExitFullscreenRequested += () => SetFullscreen(false);
+            _bar.EnterFullscreenRequested += () => SetFullscreen(true);
             _bar.VolumeRequested += ToggleVolumePopup;
             _bar.VolumeStepRequested += StepSystemVolume;
+            _bar.MuteRequested += ApplySystemMute;
+            _bar.SettingsRequested += OpenSettings;
             // 展开 / 收起会改窗口尺寸：贴底重摆一次，按钮才不会跟着列表一起往上跑
             _bar.LayoutChanged += () =>
             {
@@ -3220,7 +3229,7 @@ public partial class MainWindow : Window
         ApplyFillMode();
         _host.Settings.MirrorFit = fit.ToString();
         _host.Settings.Save();
-        TxtHint.Text = $"画面：{FitName(fit)}" + (_zoom != 1.0 ? $" · {_zoom * 100:F0}%" : "") + " · F11 进入全屏";
+        TxtHint.Text = $"画面：{FitName(fit)}" + (_zoom != 1.0 ? $" · {_zoom * 100:F0}%" : "") + " · 双击/F11 全屏";
         UpdateStageChrome();
     }
 
@@ -3232,7 +3241,7 @@ public partial class MainWindow : Window
         ApplyFillMode();
         _host.Settings.MirrorZoom = _zoom;
         _host.Settings.Save();
-        TxtHint.Text = $"画面：{FitName(_fit)}" + (_zoom != 1.0 ? $" · {_zoom * 100:F0}%" : "") + " · F11 进入全屏";
+        TxtHint.Text = $"画面：{FitName(_fit)}" + (_zoom != 1.0 ? $" · {_zoom * 100:F0}%" : "") + " · 双击/F11 全屏";
         UpdateStageChrome();
     }
 
@@ -3787,6 +3796,16 @@ public partial class MainWindow : Window
         {
             _adbDownPoint = null;
 
+            // 双击画面 = 进 / 出全屏（Esc 退出全屏在窗口级按键里）。
+            // 「电脑控制手机」正在接管鼠标时让位：那种场景下双击的意思就是"在手机上点两下"。
+            if (e.ClickCount == 2 && !_masked && !PhoneOwnsClicks()
+                && InsideHost(MiracastHost, e.GetPosition(MiracastHost)))
+            {
+                SetFullscreen(!_fullscreen);
+                e.Handled = true;
+                return;
+            }
+
             // 先看是不是点在某个"非主画面"的格子上（那时是切换，不是控制手机）
             foreach ((string id, MultiViewTile tile) in _tiles)
             {
@@ -4271,6 +4290,13 @@ public partial class MainWindow : Window
 
     private DateTime _phoneIgnoredLoggedAt = DateTime.MinValue;
     private string _phoneIgnoredReason = "";
+
+    /// <summary>
+    /// 画面上"点一下就是点手机"吗。用不写日志的判据 —— <see cref="PhoneControlReady"/> 会顺手
+    /// 记一条"已忽略"，双击全屏时不该在状态栏刷那种提示。
+    /// </summary>
+    private bool PhoneOwnsClicks()
+        => AdbEnabled && _adbMouseOn && MiracastPrimary && _adb.IsConnected && MiracastHost.SurfaceBrush is not null;
 
     /// <summary>
     /// 「点了没反应」要能查到原因：把被拦下的原因写进日志与状态栏

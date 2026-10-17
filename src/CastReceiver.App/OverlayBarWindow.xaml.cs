@@ -21,6 +21,8 @@ public partial class OverlayBarWindow : Window
     public event Action? ScreenshotRequested;
     public event Action? RecordRequested;
     public event Action? ExitFullscreenRequested;
+    /// <summary>右键菜单里的「进入全屏」（条上只在全屏时出现"退出"，所以这里单独一个）。</summary>
+    public event Action? EnterFullscreenRequested;
 
     /// <summary>用户点了「小窗」：打开/关闭画中画小窗。</summary>
     public event Action? MiniWindowRequested;
@@ -31,11 +33,18 @@ public partial class OverlayBarWindow : Window
     /// <summary>在喇叭上滚滚轮：主窗口按这个增量调本机音量（±0.02）。</summary>
     public event Action<double>? VolumeStepRequested;
 
+    /// <summary>右键菜单里的「设置…」。</summary>
+    public event Action? SettingsRequested;
+
+    /// <summary>右键菜单里的「静音 / 取消静音」：请求切到「非当前状态」。</summary>
+    public event Action<bool>? MuteRequested;
+
     /// <summary>"退出全屏"那一格出现 / 消失改了窗口尺寸：宿主（主窗口）需要重新摆一次位置。</summary>
     public event Action? LayoutChanged;
 
     private bool _fullscreen;
     private bool _recording;
+    private bool _muted;
 
     public OverlayBarWindow() => InitializeComponent();
 
@@ -61,6 +70,11 @@ public partial class OverlayBarWindow : Window
             UpdateLayout();
             LayoutChanged?.Invoke();
         }
+
+        // 右键菜单里的两条也跟着状态走（菜单是常用功能的"全集"，名字必须和条上一致）
+        MiFullscreen.Header = fullscreen ? "退出全屏" : "进入全屏";
+        MiShot.IsEnabled = canCapture;
+        MiRec.IsEnabled = canCapture;
     }
 
     /// <summary>列表之间的空白（卡片内边距）可拖动整条。</summary>
@@ -81,6 +95,19 @@ public partial class OverlayBarWindow : Window
         e.Handled = true;
     }
 
+    // ---- 右键菜单：和条上是同一批动作，另外补上"设置" ----
+
+    private void MiShot_Click(object sender, RoutedEventArgs e) => ScreenshotRequested?.Invoke();
+    private void MiRec_Click(object sender, RoutedEventArgs e) => RecordRequested?.Invoke();
+    private void MiMini_Click(object sender, RoutedEventArgs e) => MiniWindowRequested?.Invoke();
+    private void MiMute_Click(object sender, RoutedEventArgs e) => MuteRequested?.Invoke(!_muted);
+    private void MiFullscreen_Click(object sender, RoutedEventArgs e)
+    {
+        if (_fullscreen) ExitFullscreenRequested?.Invoke();
+        else EnterFullscreenRequested?.Invoke();
+    }
+    private void MiSettings_Click(object sender, RoutedEventArgs e) => SettingsRequested?.Invoke();
+
     /// <summary>
     /// 电脑音量的图标与提示：静音时喇叭划掉并变黄，正常时提示当前百分比。
     /// 调的是**本机**音量 —— 镜像的声音是这台电脑在放。
@@ -88,6 +115,7 @@ public partial class OverlayBarWindow : Window
     public void SetVolumeState(float? level, bool? muted)
     {
         bool isMuted = muted == true;
+        _muted = isMuted;
         BtnVolume.Content = isMuted ? "\uE74F" : "\uE767";
         BtnVolume.Foreground = Res(isMuted ? "B.MediaWarn" : "B.MediaTextDim");
         BtnVolume.ToolTip = isMuted
@@ -96,6 +124,9 @@ public partial class OverlayBarWindow : Window
                 ? $"电脑音量 {(int)Math.Round(value * 100)}%（点开滑杆，滚轮直接调）"
                 : "电脑音量（当前读不到）";
         AutomationProperties.SetName(BtnVolume, isMuted ? "电脑音量（已静音）" : "电脑音量");
+
+        MiMute.Header = isMuted ? "取消静音" : "静音（电脑）";
+        MiMute.Tag = isMuted ? "\uE74F" : "\uE767";
     }
 
     /// <summary>小窗开/关时同步按钮的强调状态，让"当前是否画中画"一眼可见。</summary>
@@ -105,6 +136,7 @@ public partial class OverlayBarWindow : Window
         BtnMini.ToolTip = active
             ? "关闭小窗（画面回到主窗口）"
             : "小窗显示画面（主窗口最小化时也会自动出现）";
+        MiMini.Header = active ? "关闭小窗" : "小窗显示";
     }
 
     /// <summary>录制状态：按钮变红点并提示停止。</summary>
@@ -114,6 +146,8 @@ public partial class OverlayBarWindow : Window
         BtnRec.Content = recording ? "\uE71A" : "\uE7C8";
         BtnRec.Foreground = Res(recording ? "B.MediaBad" : "B.MediaTextDim");
         BtnRec.ToolTip = recording ? "停止录制并保存" : "开始录制（Ctrl+Alt+R），保存为 MP4";
+        MiRec.Header = recording ? "停止录制并保存" : "开始录制";
+        MiRec.Tag = recording ? "\uE71A" : "\uE7C8";
     }
 
     private Brush Res(string key) => (Brush)FindResource(key);

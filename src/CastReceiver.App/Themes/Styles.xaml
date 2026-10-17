@@ -893,6 +893,73 @@
         </Setter>
     </Style>
 
+    <!-- ============================================================ 悬浮条的右键菜单
+         飘在恒黑的画面上，所以走 B.Media* 那一套；圆角与悬浮条一致（12/8）。
+         图标字形走 Tag（MenuItem.Icon 是 object，TemplateBinding 到 Text 不可靠）。 -->
+    <Style x:Key="S.BarMenu" TargetType="ContextMenu">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="Padding" Value="0" />
+        <Setter Property="FontFamily" Value="{DynamicResource F.Ui}" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ContextMenu">
+                    <Border Background="{DynamicResource B.MediaBar}" BorderBrush="{DynamicResource B.MediaLine}"
+                            BorderThickness="1" CornerRadius="12" Padding="5">
+                        <StackPanel IsItemsHost="True" KeyboardNavigation.DirectionalNavigation="Cycle" />
+                    </Border>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style x:Key="S.BarMenuItem" TargetType="MenuItem">
+        <Setter Property="Foreground" Value="{DynamicResource B.MediaText}" />
+        <Setter Property="FontSize" Value="12.5" />
+        <Setter Property="Padding" Value="10,7" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="MenuItem">
+                    <Border x:Name="b" Background="#00000000" CornerRadius="8" Padding="{TemplateBinding Padding}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="24" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock x:Name="glyph" Grid.Column="0" Text="{TemplateBinding Tag}"
+                                       FontFamily="{DynamicResource F.Icon}" FontSize="13"
+                                       Foreground="{DynamicResource B.MediaTextDim}" VerticalAlignment="Center" />
+                            <ContentPresenter Grid.Column="1" ContentSource="Header" VerticalAlignment="Center" />
+                            <TextBlock Grid.Column="2" Text="{TemplateBinding InputGestureText}"
+                                       FontFamily="{DynamicResource F.Mono}" FontSize="10.5"
+                                       Foreground="{DynamicResource B.MediaTextDim}" Margin="18,0,0,0" VerticalAlignment="Center" />
+                        </Grid>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsHighlighted" Value="True">
+                            <Setter TargetName="b" Property="Background" Value="{DynamicResource B.MediaBtnHover}" />
+                            <Setter TargetName="glyph" Property="Foreground" Value="{DynamicResource B.MediaText}" />
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Opacity" Value="0.4" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style x:Key="S.BarMenuSep" TargetType="Separator">
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Separator">
+                    <Border Height="1" Background="{DynamicResource B.MediaLine}" Margin="8,4" />
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
     <!-- ============================================================ 输入框 -->
     <Style TargetType="TextBox">
         <Setter Property="FontFamily" Value="{DynamicResource F.Ui}" />

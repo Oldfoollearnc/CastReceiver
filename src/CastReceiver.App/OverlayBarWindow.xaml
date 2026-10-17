@@ -26,11 +26,30 @@
          不需要收进"更多"里再点一下。 -->
     <Border x:Name="Card" Background="{DynamicResource B.MediaBar}" BorderBrush="{DynamicResource B.MediaLine}"
             BorderThickness="1" CornerRadius="14" Padding="5,5" MouseLeftButtonDown="OnDrag">
+        <!-- 右键：常用功能的菜单（条上放不下的、偶尔才用的都收在这里） -->
+        <Border.ContextMenu>
+            <ContextMenu Style="{StaticResource S.BarMenu}">
+                <MenuItem x:Name="MiShot" Header="截屏" Tag="&#xE722;" InputGestureText="Ctrl+Alt+S"
+                          Style="{StaticResource S.BarMenuItem}" Click="MiShot_Click" />
+                <MenuItem x:Name="MiRec" Header="开始录制" Tag="&#xE7C8;" InputGestureText="Ctrl+Alt+R"
+                          Style="{StaticResource S.BarMenuItem}" Click="MiRec_Click" />
+                <MenuItem x:Name="MiMini" Header="小窗显示" Tag="&#xE7C4;"
+                          Style="{StaticResource S.BarMenuItem}" Click="MiMini_Click" />
+                <Separator Style="{StaticResource S.BarMenuSep}" />
+                <MenuItem x:Name="MiMute" Header="静音" Tag="&#xE767;"
+                          Style="{StaticResource S.BarMenuItem}" Click="MiMute_Click" />
+                <MenuItem x:Name="MiFullscreen" Header="进入全屏" Tag="&#xE740;" InputGestureText="F11 / 双击画面"
+                          Style="{StaticResource S.BarMenuItem}" Click="MiFullscreen_Click" />
+                <Separator Style="{StaticResource S.BarMenuSep}" />
+                <MenuItem x:Name="MiSettings" Header="设置…" Tag="&#xE713;"
+                          Style="{StaticResource S.BarMenuItem}" Click="MiSettings_Click" />
+            </ContextMenu>
+        </Border.ContextMenu>
         <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
             <!-- 只在全屏时出现：全屏下舞台顶栏是收起的，退出的入口就只有这里和 Esc -->
             <Button x:Name="BtnExitFullscreen" Style="{StaticResource S.BarBtn}" Content="&#xE73F;" Visibility="Collapsed"
                     Click="BtnExitFullscreen_Click"
-                    AutomationProperties.Name="退出全屏" ToolTip="退出全屏（Esc）" />
+                    AutomationProperties.Name="退出全屏" ToolTip="退出全屏（双击画面或按 Esc）" />
 
             <Border x:Name="FsDivider" Width="1" Height="18" Background="{DynamicResource B.MediaLine}"
                     Margin="6,0,7,0" Visibility="Collapsed" />
