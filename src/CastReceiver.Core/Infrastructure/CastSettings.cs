@@ -144,6 +144,12 @@ public sealed class CastSettings
     public string Density { get; set; } = "Comfortable";
 
     /// <summary>
+    /// 右侧信息栏是否收起（像视频客户端那样只留一条窄把手，画面铺满整个宽度）。
+    /// 记进设置是为了"收起后下次打开还是收起的" —— 极简是这位用户的长期偏好。
+    /// </summary>
+    public bool SideCollapsed { get; set; }
+
+    /// <summary>
     /// 界面动效（窗口入场、悬停、待机页 3D 转台）。默认开。
     /// 刻意不受 Windows 全局「动画效果」影响：本机系统开关是关的，而用户要的是看得见的动效。
     /// 需要静态界面时在 设置 → 通用 里关掉即可。

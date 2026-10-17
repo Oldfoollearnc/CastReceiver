@@ -1,4 +1,5 @@
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
 
@@ -159,6 +160,39 @@ internal static class Motion
                 FillBehavior = FillBehavior.Stop,
             });
         }
+    }
+
+    /// <summary>
+    /// 把某一列从 <paramref name="from"/> 动到 <paramref name="to"/>（侧栏折叠 / 展开用）。
+    /// 结束后把基础值设成终点并摘掉动画 —— 与其它方法同一条规矩：属性不能被动画持有。
+    /// </summary>
+    public static void AnimateWidth(ColumnDefinition column, double from, double to, int ms = 240, Action? completed = null)
+    {
+        if (column is null) return;
+
+        if (!Enabled)
+        {
+            column.BeginAnimation(ColumnDefinition.WidthProperty, null);
+            column.Width = new GridLength(to);
+            completed?.Invoke();
+            return;
+        }
+
+        column.Width = new GridLength(to);   // 基础值先落到终点，动画只是"过程"
+        var animation = new GridLengthAnimation
+        {
+            From = new GridLength(from),
+            To = new GridLength(to),
+            EasingFunction = EaseInOut,
+            Duration = Ms(ms),
+        };
+        animation.Completed += (_, _) =>
+        {
+            column.BeginAnimation(ColumnDefinition.WidthProperty, null);
+            column.Width = new GridLength(to);
+            completed?.Invoke();
+        };
+        column.BeginAnimation(ColumnDefinition.WidthProperty, animation);
     }
 
     /// <summary>把位移复位到 0（不做动画）。</summary>

@@ -607,6 +607,40 @@
         <Setter Property="FontSize" Value="11" />
     </Style>
 
+    <!-- ============================================================ 侧栏折叠把手
+         贴在右侧信息栏左缘的一枚窄条（视频客户端那种）：收起后画面铺满整个宽度，
+         只剩它还能把信息栏拉回来。
+         这里刻意用**主题色**而不是媒体色：它浮在窗口底上，不在恒黑的画面上。 -->
+    <Style x:Key="S.SideHandle" TargetType="Button">
+        <Setter Property="Width" Value="14" />
+        <Setter Property="Height" Value="56" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="FontSize" Value="9" />
+        <Setter Property="FontFamily" Value="{DynamicResource F.Icon}" />
+        <Setter Property="Foreground" Value="{DynamicResource B.TextFaint}" />
+        <Setter Property="Background" Value="{DynamicResource B.SurfaceHi}" />
+        <Setter Property="FocusVisualStyle" Value="{StaticResource S.FocusVisual}" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border x:Name="b" Background="{TemplateBinding Background}"
+                            BorderBrush="{DynamicResource B.Line}" BorderThickness="1" CornerRadius="7">
+                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="b" Property="Background" Value="{DynamicResource B.SurfaceHover}" />
+                            <Setter Property="Foreground" Value="{DynamicResource B.Text}" />
+                        </Trigger>
+                        <Trigger Property="IsPressed" Value="True">
+                            <Setter TargetName="b" Property="Background" Value="{DynamicResource B.SurfaceHi}" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
     <!-- ============================================================ 左侧导航（设置窗口） -->
     <Style x:Key="S.NavItem" TargetType="RadioButton">
         <Setter Property="FontFamily" Value="{DynamicResource F.Ui}" />
@@ -802,6 +836,51 @@
                                             <Grid>
                                                 <Ellipse Fill="{DynamicResource B.Surface}" />
                                                 <Ellipse Fill="{DynamicResource B.Accent}" Margin="3" />
+                                            </Grid>
+                                        </ControlTemplate>
+                                    </Thumb.Template>
+                                </Thumb>
+                            </Track.Thumb>
+                        </Track>
+                    </Grid>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- 媒体语境的滑杆（音量弹层）：舞台恒黑，用主题色会变成浅底压黑画面，
+         所以轨道/滑块走 B.Media* 那一套（深浅主题取值相同）。 -->
+    <Style x:Key="S.SliderMedia" TargetType="Slider" BasedOn="{StaticResource S.Slider}">
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Slider">
+                    <Grid VerticalAlignment="Center">
+                        <Track x:Name="PART_Track">
+                            <Track.DecreaseRepeatButton>
+                                <RepeatButton Command="Slider.DecreaseLarge" Focusable="False">
+                                    <RepeatButton.Template>
+                                        <ControlTemplate TargetType="RepeatButton">
+                                            <Border Height="4" CornerRadius="2" Background="{DynamicResource B.MediaOk}" VerticalAlignment="Center" />
+                                        </ControlTemplate>
+                                    </RepeatButton.Template>
+                                </RepeatButton>
+                            </Track.DecreaseRepeatButton>
+                            <Track.IncreaseRepeatButton>
+                                <RepeatButton Command="Slider.IncreaseLarge" Focusable="False">
+                                    <RepeatButton.Template>
+                                        <ControlTemplate TargetType="RepeatButton">
+                                            <Border Height="4" CornerRadius="2" Background="{DynamicResource B.MediaBtn}" VerticalAlignment="Center" />
+                                        </ControlTemplate>
+                                    </RepeatButton.Template>
+                                </RepeatButton>
+                            </Track.IncreaseRepeatButton>
+                            <Track.Thumb>
+                                <Thumb Width="14" Height="14" Cursor="Hand">
+                                    <Thumb.Template>
+                                        <ControlTemplate TargetType="Thumb">
+                                            <Grid>
+                                                <Ellipse Fill="#FF101317" />
+                                                <Ellipse Fill="{DynamicResource B.MediaText}" Margin="3" />
                                             </Grid>
                                         </ControlTemplate>
                                     </Thumb.Template>

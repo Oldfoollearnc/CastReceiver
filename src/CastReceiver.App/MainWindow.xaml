@@ -513,6 +513,15 @@
                     </StackPanel>
                 </ScrollViewer>
 
+                <!-- 侧栏折叠把手：贴在信息栏左缘的一枚窄条（视频客户端那种）。
+                     放在**画面外面**：画面是 HwndHost，压在上面的 WPF 元素会被它盖住。
+                     收起后列宽归零，靠这点负边距它仍然留在窗口右缘，随时能把侧栏拉回来。 -->
+                <Button x:Name="BtnSideToggle" Grid.Column="1" HorizontalAlignment="Left" VerticalAlignment="Center"
+                        Margin="-7,0,0,0" Style="{StaticResource S.SideHandle}" Click="BtnSideToggle_Click"
+                        AutomationProperties.Name="折叠侧栏" ToolTip="收起右侧信息栏（只看画面）">
+                    <TextBlock x:Name="SideToggleGlyph" Text="&#xE76C;" />
+                </Button>
+
                 <!-- 电脑控制手机 · 控制条：放在画面**外面**（画面是 HwndHost，WPF 控件盖不住） -->
                 <Border x:Name="PhoneBar" Grid.Row="1" Grid.ColumnSpan="2" Style="{DynamicResource S.Card}"
                         Padding="12,9" Margin="0,10,0,0" Visibility="Collapsed"

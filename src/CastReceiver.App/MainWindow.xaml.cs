@@ -4,6 +4,7 @@ using System.Runtime.InteropServices;
 using System.Text;
 using Bitmap = System.Drawing.Bitmap;
 using System.Windows;
+using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
@@ -11,6 +12,7 @@ using System.Windows.Media.Animation;
 using System.Windows.Threading;
 using CastReceiver.App.Services;
 using CastReceiver.Core.Android;
+using CastReceiver.Core.Audio;
 using CastReceiver.Core.Diagnostics;
 using CastReceiver.Core.Devices;
 using CastReceiver.Core.Infrastructure;
@@ -43,6 +45,8 @@ public partial class MainWindow : Window
     private bool _mirrorBusy;
     private string _busyText = "";
     private bool _fullscreen;
+    /// <summary>右侧信息栏是否收起（画面铺满整个宽度）。</summary>
+    private bool _sideCollapsed;
     private bool _fillMode;
     private Interop.CompositionVideoHost.VideoFit _fit = Interop.CompositionVideoHost.VideoFit.Fit;
     private double _zoom = 1.0;
@@ -58,6 +62,8 @@ public partial class MainWindow : Window
     private string _lastTrayTip = "";
     private DateTime? _connectingSince;
     private OverlayBarWindow? _bar;
+    private VolumePopupWindow? _volume;
+    private bool _volumeErrorShown;
     private StatsOverlayWindow? _stats;
     private readonly MirrorStats _statsData = new();
     private DateTime _lastBarActivity = DateTime.UtcNow;
@@ -893,6 +899,8 @@ public partial class MainWindow : Window
         TxtHeaderDevice.Text = $"本机 · {deviceName}";
         UpdateStageChrome();
         ApplyVolumeToHosts();
+        // 侧栏的收起状态也来自设置（收起后画面铺满整个宽度；把手仍留在窗口右缘）
+        SetSidebarCollapsed(s.SideCollapsed, animate: false);
         // 底栏只在窗口模式可见（全屏时 StatusBarRow 被折叠），所以这里提示 F11 进入全屏即可；
         // 原先写的「Esc 退出全屏」在窗口模式下按了没有反应，属于误导。
         TxtHint.Text = "F11 进入全屏 · Ctrl+Alt+P 遮挡";
@@ -1798,13 +1806,94 @@ public partial class MainWindow : Window
             if (!_fullscreen)
             {
                 MainArea.Margin = new Thickness(compact ? 12 : 18, compact ? 4 : 8, compact ? 12 : 18, compact ? 6 : 10);
-                SideColumnDef.Width = new GridLength(compact ? 272 : 300);
+                SideColumnDef.Width = new GridLength(SideWidth());   // 收起时这里就是 0
                 HeaderBar.Margin = new Thickness(compact ? 12 : 18, 0, compact ? 8 : 10, 0);
                 StageCard.Margin = new Thickness(0, 0, compact ? 10 : 14, 0);
+                SideScroll.Visibility = _sideCollapsed ? Visibility.Collapsed : Visibility.Visible;
             }
 
             TxtStateBig.FontSize = compact ? 18 : 19;
+            UpdateSideToggle();
             Dispatcher.BeginInvoke(() => { PositionBar(); PositionStats(); }, DispatcherPriority.Loaded);
+        }
+        catch { }
+    }
+
+    // ------------------------------------------------------------------ 侧栏折叠
+
+    /// <summary>信息栏该有多宽：收起 = 0，否则按密度（紧凑 272 / 舒适 300）。</summary>
+    private double SideWidth()
+    {
+        if (_sideCollapsed) return 0;
+        bool compact = _host.Settings.Density.Equals("Compact", StringComparison.OrdinalIgnoreCase);
+        return compact ? 272 : 300;
+    }
+
+    private void BtnSideToggle_Click(object sender, RoutedEventArgs e)
+        => SetSidebarCollapsed(!_sideCollapsed, animate: true, save: true);
+
+    /// <summary>
+    /// 收起 / 展开右侧信息栏（画面随之铺满整个宽度）。收起状态记进设置，下次打开保持。
+    /// 全屏时侧栏本来就是 0，这里直接不理会。
+    /// </summary>
+    public void SetSidebarCollapsed(bool collapsed, bool animate = true, bool save = false)
+    {
+        try
+        {
+            if (_fullscreen)
+            {
+                _sideCollapsed = collapsed;   // 记住意愿，退出全屏时按它复原
+                return;
+            }
+
+            _sideCollapsed = collapsed;
+            double target = SideWidth();
+            double from = SideColumnDef.ActualWidth;
+
+            if (collapsed)
+            {
+                // 内容先淡出，再让列宽收掉：不然会把卡片硬挤成一条
+                Motion.FadeOut(SideScroll, 120, () => SideScroll.Visibility = Visibility.Collapsed);
+            }
+            else
+            {
+                SideScroll.Visibility = Visibility.Visible;
+                Motion.FadeIn(SideScroll, 220, 80);
+            }
+
+            void Settle()
+            {
+                UpdateSideToggle();
+                Dispatcher.BeginInvoke(() => { PositionBar(); PositionStats(); }, DispatcherPriority.Loaded);
+            }
+
+            if (animate && from > 0) Motion.AnimateWidth(SideColumnDef, from, target, 240, Settle);
+            else
+            {
+                SideColumnDef.BeginAnimation(ColumnDefinition.WidthProperty, null);
+                SideColumnDef.Width = new GridLength(target);
+                Settle();
+            }
+
+            if (save)
+            {
+                _host.Settings.SideCollapsed = collapsed;
+                _host.Settings.Save();
+            }
+        }
+        catch { }
+    }
+
+    /// <summary>把手上的箭头、名字与提示跟着折叠状态走（WCAG 2.5.3：名字必须和实际动作一致）。</summary>
+    private void UpdateSideToggle()
+    {
+        try
+        {
+            SideToggleGlyph.Text = _sideCollapsed ? "\uE76B" : "\uE76C";
+            AutomationProperties.SetName(BtnSideToggle, _sideCollapsed ? "展开侧栏" : "折叠侧栏");
+            BtnSideToggle.ToolTip = _sideCollapsed
+                ? "展开右侧信息栏（接收状态 / 本次投屏 / 提示）"
+                : "收起右侧信息栏，画面铺满整个宽度";
         }
         catch { }
     }
@@ -2649,6 +2738,7 @@ public partial class MainWindow : Window
             HeaderBar.Visibility = Visibility.Collapsed;
             StatusBarRow.Visibility = Visibility.Collapsed;
             SideColumnDef.Width = new GridLength(0);
+            BtnSideToggle.Visibility = Visibility.Collapsed;   // 全屏不折叠 —— 侧栏本来就不在
             // 关键：行是固定高度，光隐藏内容仍会各留出 56/34 的空白带，必须把行高归零
             RowHeader.Height = new GridLength(0);
             RowStatus.Height = new GridLength(0);
@@ -2706,7 +2796,8 @@ public partial class MainWindow : Window
             HeaderBar.Visibility = Visibility.Visible;
             StatusBarRow.Visibility = Visibility.Visible;
             // 侧栏宽度/外边距/舞台间距一律交回密度策略，避免"紧凑模式退出全屏后尺寸跳回默认"
-            SideColumnDef.Width = new GridLength(300);
+            // （ApplyDensity 里已经带上"收起就是 0"这一条，所以这里不必再写死 300）
+            BtnSideToggle.Visibility = Visibility.Visible;
             RowHeader.Height = new GridLength(50);
             RowStatus.Height = new GridLength(32);
             StageTopBar.Visibility = Visibility.Visible;
@@ -2877,6 +2968,8 @@ public partial class MainWindow : Window
             _bar.RecordRequested += ToggleRecording;
             _bar.MiniWindowRequested += ToggleMiniWindow;
             _bar.ExitFullscreenRequested += () => SetFullscreen(false);
+            _bar.VolumeRequested += ToggleVolumePopup;
+            _bar.VolumeStepRequested += StepSystemVolume;
             // 展开 / 收起会改窗口尺寸：贴底重摆一次，按钮才不会跟着列表一起往上跑
             _bar.LayoutChanged += () =>
             {
@@ -2886,6 +2979,7 @@ public partial class MainWindow : Window
             if (_host.Settings.AntiCapture) WindowProtection.SetProtection(_bar, true);
         }
         SyncBar();
+        SyncVolumeUi();               // 喇叭图标跟着真实音量/静音状态走
         _bar.Topmost = _fullscreen;   // 只有全屏才置顶，窗口模式跟随主窗口层级
         _bar.Show();
         PositionBar();
@@ -2895,6 +2989,7 @@ public partial class MainWindow : Window
     private void HideBar()
     {
         try { _bar?.Hide(); } catch { }
+        HideVolumePopup();
     }
 
     private void SyncBar()
@@ -2924,8 +3019,103 @@ public partial class MainWindow : Window
                 _bar.Left = topLeft.X + (w - _bar.ActualWidth) / 2;
                 _bar.Top = topLeft.Y + h - _bar.ActualHeight - 14;
             }
+
+            PositionVolumePopup();   // 音量弹层是贴在控制条上的，条动它跟着动
         }
         catch { }
+    }
+
+    // ------------------------------------------------------------------ 电脑音量（不是手机音量）
+
+    /// <summary>点喇叭：开 / 关音量弹层。</summary>
+    private void ToggleVolumePopup()
+    {
+        if (_volume is { IsVisible: true }) { HideVolumePopup(); return; }
+        ShowVolumePopup();
+    }
+
+    private void ShowVolumePopup()
+    {
+        try
+        {
+            if (_volume is null)
+            {
+                _volume = new VolumePopupWindow { Owner = this };
+                _volume.VolumeChanged += ApplySystemVolume;
+                _volume.MuteRequested += ApplySystemMute;
+                _volume.Closed += (_, _) => _volume = null;
+                if (_host.Settings.AntiCapture) WindowProtection.SetProtection(_volume, true);
+            }
+
+            SyncVolumeUi();
+            _volume.Topmost = _fullscreen;
+            _volume.Show();
+            PositionVolumePopup();
+            _lastBarActivity = DateTime.UtcNow;
+        }
+        catch { }
+    }
+
+    private void HideVolumePopup()
+    {
+        try { _volume?.Hide(); } catch { }
+    }
+
+    /// <summary>把弹层贴在控制条正上方（并夹在工作区内，别跑到屏幕外）。</summary>
+    private void PositionVolumePopup()
+    {
+        if (_volume is null || !_volume.IsVisible || _bar is null || !_bar.IsVisible) return;
+        try
+        {
+            double w = _volume.ActualWidth > 0 ? _volume.ActualWidth : 260;
+            double h = _volume.ActualHeight > 0 ? _volume.ActualHeight : 46;
+            Rect area = SystemParameters.WorkArea;
+
+            double left = _bar.Left + (_bar.ActualWidth - w) / 2;
+            double top = _bar.Top - h - 8;
+            _volume.Left = Math.Clamp(left, area.Left + 8, Math.Max(area.Left + 8, area.Right - w - 8));
+            _volume.Top = Math.Clamp(top, area.Top + 8, Math.Max(area.Top + 8, area.Bottom - h - 8));
+        }
+        catch { }
+    }
+
+    /// <summary>滑杆拖到哪，电脑音量就开到哪。</summary>
+    private void ApplySystemVolume(double scalar)
+    {
+        if (!SystemVolume.SetScalar((float)scalar)) WarnVolumeOnce();
+        SyncVolumeUi();
+    }
+
+    private void ApplySystemMute(bool mute)
+    {
+        if (!SystemVolume.SetMute(mute)) WarnVolumeOnce();
+        SyncVolumeUi();
+    }
+
+    /// <summary>喇叭上滚滚轮：±2%。</summary>
+    private void StepSystemVolume(double delta)
+    {
+        if (SystemVolume.Step((float)delta)) SyncVolumeUi();
+        else WarnVolumeOnce();
+        _lastBarActivity = DateTime.UtcNow;
+    }
+
+    /// <summary>悬浮条图标 + 弹层滑杆一起同步到真实音量（读不到时会禁用滑杆并提示一次）。</summary>
+    private void SyncVolumeUi()
+    {
+        float? level = SystemVolume.GetScalar();
+        bool? muted = SystemVolume.GetMute();
+        try { _bar?.SetVolumeState(level, muted); } catch { }
+        try { _volume?.SyncState(level, muted); } catch { }
+        if (level is null) WarnVolumeOnce();
+    }
+
+    /// <summary>音量读不到时只提示一次，别在拖动过程中刷屏。</summary>
+    private void WarnVolumeOnce()
+    {
+        if (_volumeErrorShown) return;
+        _volumeErrorShown = true;
+        ShowToast("调不了电脑音量", SystemVolume.LastError ?? "这台机器的默认播放设备读不到音量控制。", null, null, ok: false);
     }
 
     /// <summary>全屏时：鼠标靠近屏幕底部（或悬停控制条上）才显示，否则自动隐藏以保持沉浸感。</summary>
@@ -2941,6 +3131,12 @@ public partial class MainWindow : Window
                 if (_lastCursor.X != p.X || _lastCursor.Y != p.Y) { _lastCursor = p; _lastMouseMove = DateTime.UtcNow; }
                 overBar = p.X >= _bar.Left && p.X <= _bar.Left + _bar.ActualWidth
                           && p.Y >= _bar.Top && p.Y <= _bar.Top + _bar.ActualHeight;
+                // 音量弹层贴在条上方，鼠标停在弹层上也算"在用条"，别把它一起收走
+                if (!overBar && _volume is { IsVisible: true } volume)
+                {
+                    overBar = p.X >= volume.Left && p.X <= volume.Left + volume.ActualWidth
+                              && p.Y >= volume.Top && p.Y <= volume.Top + volume.ActualHeight;
+                }
                 if (overBar || p.Y > area.Bottom - 120) _lastBarActivity = DateTime.UtcNow;
             }
             // 全屏无操作 3 秒后隐藏鼠标指针，动一下就恢复
@@ -2951,7 +3147,7 @@ public partial class MainWindow : Window
             }
             bool shouldShow = (DateTime.UtcNow - _lastBarActivity).TotalSeconds < 2.6;
             if (shouldShow && !_bar.IsVisible) { _bar.Show(); PositionBar(); }
-            else if (!shouldShow && _bar.IsVisible && !overBar) _bar.Hide();
+            else if (!shouldShow && _bar.IsVisible && !overBar) { _bar.Hide(); HideVolumePopup(); }
         }
         catch { }
     }
@@ -2968,7 +3164,7 @@ public partial class MainWindow : Window
                 if (!_bar!.IsVisible) _bar.Show();
                 PositionBar();
             }
-            else if (_bar is not null && _bar.IsVisible) _bar.Hide();
+            else if (_bar is not null && _bar.IsVisible) { _bar.Hide(); HideVolumePopup(); }
         }
         catch { }
     }

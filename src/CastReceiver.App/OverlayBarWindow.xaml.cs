@@ -1,4 +1,5 @@
 using System.Windows;
+using System.Windows.Automation;
 using System.Windows.Input;
 using System.Windows.Media;
 
@@ -23,6 +24,12 @@ public partial class OverlayBarWindow : Window
 
     /// <summary>用户点了「小窗」：打开/关闭画中画小窗。</summary>
     public event Action? MiniWindowRequested;
+
+    /// <summary>用户点了喇叭：主窗口负责开关音量弹层。</summary>
+    public event Action? VolumeRequested;
+
+    /// <summary>在喇叭上滚滚轮：主窗口按这个增量调本机音量（±0.02）。</summary>
+    public event Action<double>? VolumeStepRequested;
 
     /// <summary>"退出全屏"那一格出现 / 消失改了窗口尺寸：宿主（主窗口）需要重新摆一次位置。</summary>
     public event Action? LayoutChanged;
@@ -66,6 +73,30 @@ public partial class OverlayBarWindow : Window
     private void BtnShot_Click(object sender, RoutedEventArgs e) => ScreenshotRequested?.Invoke();
     private void BtnRec_Click(object sender, RoutedEventArgs e) => RecordRequested?.Invoke();
     private void BtnMini_Click(object sender, RoutedEventArgs e) => MiniWindowRequested?.Invoke();
+    private void BtnVolume_Click(object sender, RoutedEventArgs e) => VolumeRequested?.Invoke();
+
+    private void BtnVolume_Wheel(object sender, MouseWheelEventArgs e)
+    {
+        VolumeStepRequested?.Invoke(e.Delta > 0 ? 0.02 : -0.02);
+        e.Handled = true;
+    }
+
+    /// <summary>
+    /// 电脑音量的图标与提示：静音时喇叭划掉并变黄，正常时提示当前百分比。
+    /// 调的是**本机**音量 —— 镜像的声音是这台电脑在放。
+    /// </summary>
+    public void SetVolumeState(float? level, bool? muted)
+    {
+        bool isMuted = muted == true;
+        BtnVolume.Content = isMuted ? "\uE74F" : "\uE767";
+        BtnVolume.Foreground = Res(isMuted ? "B.MediaWarn" : "B.MediaTextDim");
+        BtnVolume.ToolTip = isMuted
+            ? "电脑音量：已静音（点开滑杆或滚轮调节）"
+            : level is { } value
+                ? $"电脑音量 {(int)Math.Round(value * 100)}%（点开滑杆，滚轮直接调）"
+                : "电脑音量（当前读不到）";
+        AutomationProperties.SetName(BtnVolume, isMuted ? "电脑音量（已静音）" : "电脑音量");
+    }
 
     /// <summary>小窗开/关时同步按钮的强调状态，让"当前是否画中画"一眼可见。</summary>
     public void SetMiniActive(bool active)

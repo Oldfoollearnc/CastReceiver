@@ -35,6 +35,13 @@
             <Border x:Name="FsDivider" Width="1" Height="18" Background="{DynamicResource B.MediaLine}"
                     Margin="6,0,7,0" Visibility="Collapsed" />
 
+            <!-- 电脑音量（不是手机音量）：点开滑杆弹层，滚轮直接在图标上调 -->
+            <Button x:Name="BtnVolume" Style="{StaticResource S.BarBtn}" Content="&#xE767;" Click="BtnVolume_Click"
+                    MouseWheel="BtnVolume_Wheel"
+                    AutomationProperties.Name="电脑音量" ToolTip="电脑音量（点开滑杆，滚轮直接调）" />
+
+            <Border Width="1" Height="18" Background="{DynamicResource B.MediaLine}" Margin="6,0,7,0" />
+
             <Button x:Name="BtnShot" Style="{StaticResource S.BarBtn}" Content="&#xE722;" Click="BtnShot_Click"
                     AutomationProperties.Name="截屏" ToolTip="截取当前画面（Ctrl+Alt+S）" />
 
