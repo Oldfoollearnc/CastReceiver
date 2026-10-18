@@ -1111,7 +1111,7 @@ public partial class MainWindow : Window
 
         // 托盘图标与全局快捷键都是系统调用（Shell_NotifyIcon / RegisterHotKey），
         // 和"第一帧出来"没有关系：挪到界面显示之后再注册，别让它们挤在启动路径上。
-        Dispatcher.BeginInvoke(InitTrayAndHotkeys, DispatcherPriority.ApplicationIdle);
+        _ = Dispatcher.BeginInvoke(InitTrayAndHotkeys, DispatcherPriority.ApplicationIdle);
 
         // 首帧已经出来了：界面本身立刻可用，剩下的准备工作并行在后台做。
         // 这里**刻意不再** Task.Delay(100) —— 那 100ms 纯粹是白等，用户只会觉得"点了没反应"。

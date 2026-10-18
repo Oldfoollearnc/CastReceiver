@@ -146,11 +146,15 @@ $root = [System.Windows.Automation.AutomationElement]::RootElement
 $winCond = New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::ProcessIdProperty, $p.Id)
 $found = $null
 foreach ($w in $root.FindAll([System.Windows.Automation.TreeScope]::Children, $winCond)) {
-    $c = New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::NameProperty, "打开设置")
-    $found = $w.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $c)
+    # 2.2 起按钮的自动化名从「打开设置」简化为「设置」：两个都认，避免断言跟着文案改来改去
+    foreach ($name in @("设置", "打开设置")) {
+        $c = New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::NameProperty, $name)
+        $found = $w.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $c)
+        if ($found) { break }
+    }
     if ($found) { break }
 }
-if ($found) { Write-Ok "主界面已就绪（能找到「打开设置」）" } else { Write-Bad "主界面控件找不到（界面可能没交接回来）" }
+if ($found) { Write-Ok "主界面已就绪（能找到设置入口）" } else { Write-Bad "主界面控件找不到（界面可能没交接回来）" }
 
 # ③ 入场窗必须自己收掉，不能留黑屏
 $intro = @($windows | Where-Object { $_ -like '*CastReceiverIntroWindow*' })
