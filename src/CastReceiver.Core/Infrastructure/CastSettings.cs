@@ -104,6 +104,16 @@ public sealed class CastSettings
     /// <summary>画面适配方式：Fit(适应) / Fill(铺满裁切) / Stretch(拉伸) / Native(原始 1:1)。</summary>
     public string MirrorFit { get; set; } = "Fit";
 
+    /// <summary>
+    /// 自动适配（默认开）：按"不裁切的前提下铺到最大"计算，窗口/全屏尺寸变化时自动跟随。
+    ///
+    /// 自动模式下界面只留一枚「自动」小标，适应/缩放那组按钮整体收起；
+    /// 点它（或设置里选任一手动方式、拖缩放）即进入手动，按钮重新出现。
+    /// 全屏时同样生效 —— 以前全屏只会在"用户从没选过"时偷偷切成铺满（裁掉画面边缘），
+    /// 与"无裁切"正好相反。
+    /// </summary>
+    public bool MirrorFitAuto { get; set; } = true;
+
     /// <summary>画面缩放倍率（0.5 - 2.0），在适配方式之上生效。</summary>
     public double MirrorZoom { get; set; } = 1.0;
 
@@ -155,6 +165,13 @@ public sealed class CastSettings
     /// 需要静态界面时在 设置 → 通用 里关掉即可。
     /// </summary>
     public bool UiMotion { get; set; } = true;
+
+    /// <summary>
+    /// 悬浮控制条（画面下方那条截屏/录制/小窗/音量）在多少秒无操作后自动消失。
+    /// 0 = 常驻不消失。默认 3 秒：条压在画面上，一直挂着会挡内容；
+    /// 鼠标移到画面上或条上会立刻重新出现。
+    /// </summary>
+    public int BarAutoHideSeconds { get; set; } = 3;
 
     /// <summary>使用 Mica（Win11 半透明材质）背景。</summary>
     public bool UseMica { get; set; }

@@ -50,6 +50,8 @@ public partial class MainWindow : Window
     private bool _fillMode;
     private Interop.CompositionVideoHost.VideoFit _fit = Interop.CompositionVideoHost.VideoFit.Fit;
     private double _zoom = 1.0;
+    /// <summary>自动适配（默认开）：不裁切、按屏幕等比最大化；开着手动按钮整组收起。</summary>
+    private bool _fitAuto = true;
     private bool _fitExplicit;      // 用户是否明确选择过画面适配
     private bool _zoomExplicit;     // 用户是否明确调过缩放
     private WindowStyle _prevStyle;
@@ -67,6 +69,8 @@ public partial class MainWindow : Window
     private StatsOverlayWindow? _stats;
     private readonly MirrorStats _statsData = new();
     private DateTime _lastBarActivity = DateTime.UtcNow;
+    /// <summary>悬浮控制条无操作多少秒后自动消失（0 = 常驻）。</summary>
+    private int _barHideSeconds = 3;
     private bool _tutorialOpen;
     /// <summary>未连接时右侧轮播的「上手引导」页（图标用矢量路径，不依赖字体字形）。</summary>
     private sealed record TipPage(string Title, string Body, string Icon);
@@ -264,6 +268,7 @@ public partial class MainWindow : Window
             {
                 PositionStats();
                 RefreshUi();
+                RevealBar();     // 从最小化/后台回来：先把控制条亮一下，再按设置自动收
 
                 // 因为最小化而自动弹出的小窗，主窗口一恢复就收起；手动打开的保留
                 if (_miniAuto && _mini is not null)
@@ -275,7 +280,7 @@ public partial class MainWindow : Window
             UpdateMaximizeGlyph();
             UpdateWindowedBar();
         };
-        Activated += (_, _) => { UpdateWindowedBar(); HealLeftoverIntroWindow(); };
+        Activated += (_, _) => { RevealBar(); UpdateWindowedBar(); HealLeftoverIntroWindow(); };
         Deactivated += (_, _) => UpdateWindowedBar();
 
         // 兜底巡检：万一有入场窗残留（透明却盖在最上层 → 界面点不动），每 4 秒清一次
@@ -926,9 +931,13 @@ public partial class MainWindow : Window
     private void LoadSettingsIntoUi()
     {
         var s = _host.Settings;
-        _fit = ParseFit(s.MirrorFit);
+        // 自动适配时固定"适应"（等比、不裁切）与 100%：它本身就是最优解，
+        // 手动值留着不动 —— 用户切回手动时还能拿回上次的选择。
+        _fitAuto = s.MirrorFitAuto;
+        _fit = _fitAuto ? Interop.CompositionVideoHost.VideoFit.Fit : ParseFit(s.MirrorFit);
         _fillMode = _fit == Interop.CompositionVideoHost.VideoFit.Fill;
-        _zoom = Math.Clamp(s.MirrorZoom, 0.5, 2.0);
+        _zoom = _fitAuto ? 1.0 : Math.Clamp(s.MirrorZoom, 0.5, 2.0);
+        _barHideSeconds = Math.Clamp(s.BarAutoHideSeconds, 0, 60);
         BtnLatency.Content = s.LowLatency ? "延迟优先" : "画质优先";
         // 顶栏的本机名与手机投屏列表里看到的名字保持同一个来源
         string deviceName = string.IsNullOrWhiteSpace(s.DeviceName) ? "本机" : s.DeviceName.Trim();
@@ -1111,8 +1120,9 @@ public partial class MainWindow : Window
 
         // 界面入场动效同步开始：不用等网络探测/接收端就绪，视觉上"已经打开了"。
         PlayEntrance();
-        ShowBar();                 // 控制条在窗口模式下也常驻（浮在画面底部）
+        ShowBar();                 // 控制条先亮出来（3 秒无操作后按设置自动收起）
         PositionBar();
+        _cursorTimer.Start();      // 窗口模式也要盯鼠标：靠它把控制条收起来/叫回来
 
         // 网络探测与接收端启动在构造函数里就已经放出去了（与首帧渲染并行），这里等它们收尾。
         // 以前是串行的两个 await（中间还夹着固定 100ms / 160ms 的白等），光这一段就是好几秒。
@@ -2797,13 +2807,9 @@ public partial class MainWindow : Window
             Topmost = true;
             TryFillMonitor();
 
-            // 注意：不再自动改成"铺满"。用户明确选过就尊重他的选择；
-            // 只有从未选过（首次使用）时，才在全屏时给一次"铺满"的默认建议。
-            if (!_fitExplicit && _fit == Interop.CompositionVideoHost.VideoFit.Fit && _zoom <= 1.0)
-            {
-                _fit = Interop.CompositionVideoHost.VideoFit.Fill;
-                ApplyFillMode();
-            }
+            // 全屏不再偷偷改成"铺满"：自动适配的承诺就是**不裁切**，
+            // 而铺满必然裁掉画面边缘（用户要的正好相反）。手动模式则尊重用户选过的值。
+            // 自动/适应都是 Uniform，进入全屏后由渲染层按新尺寸等比放大 —— 不需要额外计算。
 
             if (_bar is not null) _bar.Topmost = true;
             ShowBar();
@@ -2814,10 +2820,10 @@ public partial class MainWindow : Window
         }
         else
         {
-            _cursorTimer.Stop();
+            // 退出全屏后计时器继续跑：窗口模式下控制条同样要能自动收起（见 OnCursorTick）
             if (_keepAwake) { WindowEffects.SetKeepAwake(false); _keepAwake = false; }
             WindowEffects.SetCursorHidden(false);
-            ShowBar();             // 回到窗口模式：控制条继续常驻（取消置顶）
+            RevealBar();           // 回到窗口模式：先把控制条亮出来，3 秒后再收
             UpdateWindowedBar();
 
             WindowState = WindowState.Normal;
@@ -2946,6 +2952,13 @@ public partial class MainWindow : Window
             var visible = Rect.Intersect(virtualScreen, new Rect(left, top, width, height));
             if (visible.IsEmpty || visible.Width < 120 || visible.Height < 120) return;   // 完全离屏：不还原
 
+            // 上次的位置可能来自另一套分辨率/缩放（例如换过显示器或改过缩放）：
+            // 只保证"露出来一点"是不够的 —— 窗口底部会滑到任务栏后面，
+            // 悬浮控制条正好在那里，结果鼠标点不到、看起来像坏了。
+            // 这里把窗口整体夹回虚拟屏幕内。
+            left = Math.Clamp(left, virtualScreen.Left, Math.Max(virtualScreen.Left, virtualScreen.Right - width));
+            top = Math.Clamp(top, virtualScreen.Top, Math.Max(virtualScreen.Top, virtualScreen.Bottom - height));
+
             WindowStartupLocation = WindowStartupLocation.Manual;
             Left = left;
             Top = top;
@@ -3014,12 +3027,29 @@ public partial class MainWindow : Window
             _bar.VolumeStepRequested += StepSystemVolume;
             _bar.MuteRequested += ApplySystemMute;
             _bar.SettingsRequested += OpenSettings;
+            // 全屏时的画面适配：以前全屏没有任何入口，只能退全屏去改（用户反馈）
+            _bar.FitModeRequested += mode =>
+            {
+                switch (mode)
+                {
+                    case "Auto": SetAutoFit(); break;
+                    case "Fill": SetFit(Interop.CompositionVideoHost.VideoFit.Fill); break;
+                    case "Stretch": SetFit(Interop.CompositionVideoHost.VideoFit.Stretch); break;
+                    case "Native": SetFit(Interop.CompositionVideoHost.VideoFit.Native); break;
+                    default: SetFit(Interop.CompositionVideoHost.VideoFit.Fit); break;
+                }
+                _lastBarActivity = DateTime.UtcNow;
+            };
+            _bar.ZoomStepRequested += delta => { SetZoom(_zoom + delta); _lastBarActivity = DateTime.UtcNow; };
+            _bar.ZoomResetRequested += () => { SetZoom(1.0); _lastBarActivity = DateTime.UtcNow; };
             // 展开 / 收起会改窗口尺寸：贴底重摆一次，按钮才不会跟着列表一起往上跑
             _bar.LayoutChanged += () =>
             {
                 _lastBarActivity = DateTime.UtcNow;
                 Dispatcher.BeginInvoke(() => PositionBar(), DispatcherPriority.Loaded);
             };
+            // 鼠标在条上活动 = 用户正在用它，别让自动收起把条撤走
+            _bar.Activity += () => _lastBarActivity = DateTime.UtcNow;
             if (_host.Settings.AntiCapture) WindowProtection.SetProtection(_bar, true);
         }
         SyncBar();
@@ -3047,12 +3077,15 @@ public partial class MainWindow : Window
         if (_bar is null) return;
         try
         {
+            // 先算理想位置，再统一夹进工作区：窗口贴着任务栏、或者上次的窗口位置
+            // 让画面底部落到屏幕外时，控制条不能被摆到"看得见但点不到"的地方。
+            double left, top;
             if (_fullscreen)
             {
                 // 全屏：贴在屏幕底部中间
                 var area = SystemParameters.WorkArea;
-                _bar.Left = area.Left + (area.Width - _bar.ActualWidth) / 2;
-                _bar.Top = area.Bottom - _bar.ActualHeight - 28;
+                left = area.Left + (area.Width - _bar.ActualWidth) / 2;
+                top = area.Bottom - _bar.ActualHeight - 28;
             }
             else
             {
@@ -3060,9 +3093,15 @@ public partial class MainWindow : Window
                 var topLeft = StageCard.PointToScreen(new Point(0, 0));
                 double dpi = VisualTreeHelper.GetDpi(this).DpiScaleX;
                 double w = StageCard.ActualWidth * dpi, h = StageCard.ActualHeight * dpi;
-                _bar.Left = topLeft.X + (w - _bar.ActualWidth) / 2;
-                _bar.Top = topLeft.Y + h - _bar.ActualHeight - 14;
+                left = topLeft.X + (w - _bar.ActualWidth) / 2;
+                top = topLeft.Y + h - _bar.ActualHeight - 14;
             }
+
+            Rect work = SystemParameters.WorkArea;
+            left = Math.Clamp(left, work.Left + 4, Math.Max(work.Left + 4, work.Right - _bar.ActualWidth - 4));
+            top = Math.Clamp(top, work.Top + 4, Math.Max(work.Top + 4, work.Bottom - _bar.ActualHeight - 4));
+            _bar.Left = left;
+            _bar.Top = top;
 
             PositionVolumePopup();   // 音量弹层是贴在控制条上的，条动它跟着动
         }
@@ -3075,6 +3114,11 @@ public partial class MainWindow : Window
     private void ToggleVolumePopup()
     {
         if (_volume is { IsVisible: true }) { HideVolumePopup(); return; }
+
+        // 这一次点击已经把它"点到外面收起来"了（失活发生在按钮 Click 之前）：
+        // 不能再紧接着打开，否则表现成"怎么点都关不掉"。
+        if (_volume is { } recent && (DateTime.UtcNow - recent.LastAutoHiddenUtc).TotalMilliseconds < 300) return;
+
         ShowVolumePopup();
     }
 
@@ -3087,6 +3131,7 @@ public partial class MainWindow : Window
                 _volume = new VolumePopupWindow { Owner = this };
                 _volume.VolumeChanged += ApplySystemVolume;
                 _volume.MuteRequested += ApplySystemMute;
+                _volume.AutoHidden += () => _lastBarActivity = DateTime.UtcNow;
                 _volume.Closed += (_, _) => _volume = null;
                 if (_host.Settings.AntiCapture) WindowProtection.SetProtection(_volume, true);
             }
@@ -3094,6 +3139,9 @@ public partial class MainWindow : Window
             SyncVolumeUi();
             _volume.Topmost = _fullscreen;
             _volume.Show();
+            // 弹层要能收到"点到外面"的失活通知才谈得上自动收起；它只有这一小块可点区域，
+            // 抢焦点不会影响主界面操作（点一下主界面就回到主窗口了）。
+            try { _volume.Activate(); } catch { }
             PositionVolumePopup();
             _lastBarActivity = DateTime.UtcNow;
         }
@@ -3162,53 +3210,118 @@ public partial class MainWindow : Window
         ShowToast("调不了电脑音量", SystemVolume.LastError ?? "这台机器的默认播放设备读不到音量控制。", null, null, ok: false);
     }
 
-    /// <summary>全屏时：鼠标靠近屏幕底部（或悬停控制条上）才显示，否则自动隐藏以保持沉浸感。</summary>
     private void OnCursorTick()
     {
-        if (!_fullscreen || _bar is null) return;
+        if (_closing || _bar is null) return;
+        if (WindowState == WindowState.Minimized) return;
         try
         {
-            var area = SystemParameters.WorkArea;
-            bool overBar = false;
+            bool overBar = false, overPopup = false, overStage = false;
             if (GetCursorPos(out var p))
             {
-                if (_lastCursor.X != p.X || _lastCursor.Y != p.Y) { _lastCursor = p; _lastMouseMove = DateTime.UtcNow; }
-                overBar = p.X >= _bar.Left && p.X <= _bar.Left + _bar.ActualWidth
-                          && p.Y >= _bar.Top && p.Y <= _bar.Top + _bar.ActualHeight;
-                // 音量弹层贴在条上方，鼠标停在弹层上也算"在用条"，别把它一起收走
-                if (!overBar && _volume is { IsVisible: true } volume)
-                {
-                    overBar = p.X >= volume.Left && p.X <= volume.Left + volume.ActualWidth
-                              && p.Y >= volume.Top && p.Y <= volume.Top + volume.ActualHeight;
-                }
-                if (overBar || p.Y > area.Bottom - 120) _lastBarActivity = DateTime.UtcNow;
+                bool moved = p.X != _lastCursor.X || p.Y != _lastCursor.Y;
+                if (moved) { _lastCursor = p; _lastMouseMove = DateTime.UtcNow; }
+
+                overBar = CursorInside(_bar, p);
+                if (_volume is { IsVisible: true } volume) overPopup = CursorInside(volume, p);
+                overStage = _fullscreen || CursorOverStage(p);
+
+                // "在用控制条"的判定：停在条/弹层上，或者鼠标**移动**进了画面。
+                // 只是把鼠标停在画面上不动，不算 —— 否则看视频时它会永远挂着。
+                if (overBar || overPopup || (moved && overStage)) _lastBarActivity = DateTime.UtcNow;
+                if (_fullscreen && p.Y > SystemParameters.WorkArea.Bottom - 120) _lastBarActivity = DateTime.UtcNow;
             }
+
             // 全屏无操作 3 秒后隐藏鼠标指针，动一下就恢复
-            if (_host.Settings.HideCursorInFullscreen)
+            if (_fullscreen && _host.Settings.HideCursorInFullscreen)
             {
                 bool idle = (DateTime.UtcNow - _lastMouseMove).TotalSeconds > 3;
-                WindowEffects.SetCursorHidden(idle && !overBar);
+                WindowEffects.SetCursorHidden(idle && !overBar && !overPopup);
             }
-            bool shouldShow = (DateTime.UtcNow - _lastBarActivity).TotalSeconds < 2.6;
+
+            // 音量弹层是贴在条上的：它开着的时候条不能自己收走，否则会剩一个悬空的滑杆
+            bool popupOpen = _volume is { IsVisible: true };
+            bool shouldShow = popupOpen || _barHideSeconds <= 0
+                              || overBar || overPopup
+                              || (DateTime.UtcNow - _lastBarActivity).TotalSeconds < _barHideSeconds;
+
             if (shouldShow && !_bar.IsVisible) { _bar.Show(); PositionBar(); }
-            else if (!shouldShow && _bar.IsVisible && !overBar) { _bar.Hide(); HideVolumePopup(); }
+            else if (!shouldShow && _bar.IsVisible) { _bar.Hide(); HideVolumePopup(); }
         }
         catch { }
     }
 
-    /// <summary>窗口模式：控制条常驻；最小化或被其它程序挡住时隐藏。</summary>
-    private void UpdateWindowedBar()
+    /// <summary>鼠标是不是在这块 WPF 窗口的物理像素范围内（GetCursorPos 是物理像素，Left/Top 是 DIP，必须换算）。</summary>
+    private static bool CursorInside(Window window, POINT p)
     {
-        if (_closing) return;
-        bool shouldShow = !_fullscreen && WindowState != WindowState.Minimized;
+        if (!window.IsVisible) return false;
         try
         {
-            if (shouldShow)
+            Point origin = window.PointToScreen(new Point(0, 0));
+            double scale = VisualTreeHelper.GetDpi(window).DpiScaleX;
+            return p.X >= origin.X && p.X <= origin.X + window.ActualWidth * scale
+                   && p.Y >= origin.Y && p.Y <= origin.Y + window.ActualHeight * scale;
+        }
+        catch { return false; }
+    }
+
+    /// <summary>鼠标是不是在画面区（窗口模式下的"舞台"）上。全屏时整块屏幕都算。</summary>
+    private bool CursorOverStage(POINT p)
+    {
+        try
+        {
+            if (StageCard.ActualWidth <= 0 || StageCard.ActualHeight <= 0) return false;
+            Point origin = StageCard.PointToScreen(new Point(0, 0));
+            double scale = VisualTreeHelper.GetDpi(this).DpiScaleX;
+            return p.X >= origin.X && p.X <= origin.X + StageCard.ActualWidth * scale
+                   && p.Y >= origin.Y && p.Y <= origin.Y + StageCard.ActualHeight * scale;
+        }
+        catch { return false; }
+    }
+
+    /// <summary>窗口模式：控制条按"无操作秒数"自动收起；最小化 / 被其它程序挡住时隐藏。</summary>
+    private void UpdateWindowedBar()
+    {
+        if (_closing || _fullscreen || _bar is null) return;
+        try
+        {
+            bool allowed = WindowState != WindowState.Minimized && !_introActive && !_introNative;
+            if (!allowed)
             {
-                if (!_bar!.IsVisible) _bar.Show();
+                if (_bar.IsVisible) { _bar.Hide(); HideVolumePopup(); }
+                return;
+            }
+
+            // 常驻模式：窗口在就显示（老行为）
+            if (_barHideSeconds <= 0)
+            {
+                if (!_bar.IsVisible) _bar.Show();
                 PositionBar();
             }
-            else if (_bar is not null && _bar.IsVisible) { _bar.Hide(); HideVolumePopup(); }
+        }
+        catch { }
+    }
+
+    /// <summary>设置里改了"自动消失秒数"：立即生效，并把控制条亮出来让用户看到效果。</summary>
+    public void ApplyBarAutoHideSetting()
+    {
+        int seconds = Math.Clamp(_host.Settings.BarAutoHideSeconds, 0, 60);
+        if (seconds == _barHideSeconds) return;
+        _barHideSeconds = seconds;
+        RevealBar();
+    }
+
+    /// <summary>立刻把控制条亮出来，并重新开始计时。</summary>
+    private void RevealBar()
+    {
+        _lastBarActivity = DateTime.UtcNow;
+        if (_bar is null || _closing) return;
+        try
+        {
+            if (_introActive || _introNative) { _barPendingIntro = true; return; }
+            if (!_bar.IsVisible) _bar.Show();
+            SyncBar();
+            PositionBar();
         }
         catch { }
     }
@@ -3255,29 +3368,70 @@ public partial class MainWindow : Window
         _ => Interop.CompositionVideoHost.VideoFit.Fit,
     };
 
-    /// <summary>切换适配方式（舞台顶栏与设置窗口共用）。</summary>
+    /// <summary>切换适配方式（舞台顶栏、全屏悬浮条菜单与设置窗口共用）。这一下即进入手动模式。</summary>
     public void SetFit(Interop.CompositionVideoHost.VideoFit fit)
     {
+        _fitAuto = false;
         _fit = fit;
         _fitExplicit = _zoomExplicit = true;   // 用户明确选过，之后任何情况都不再自动改
         _fillMode = fit == Interop.CompositionVideoHost.VideoFit.Fill;
         ApplyFillMode();
+        _host.Settings.MirrorFitAuto = false;
         _host.Settings.MirrorFit = fit.ToString();
         _host.Settings.Save();
         TxtHint.Text = $"画面：{FitName(fit)}" + (_zoom != 1.0 ? $" · {_zoom * 100:F0}%" : "") + " · 双击/F11 全屏";
         UpdateStageChrome();
     }
 
-    /// <summary>设置缩放倍率。</summary>
+    /// <summary>设置缩放倍率。缩放也是手动调整的一种，会让自动适配让位。</summary>
     public void SetZoom(double zoom)
     {
+        _fitAuto = false;
         _zoom = Math.Clamp(zoom, 0.5, 2.0);
         _zoomExplicit = true;
         ApplyFillMode();
+        _host.Settings.MirrorFitAuto = false;
         _host.Settings.MirrorZoom = _zoom;
         _host.Settings.Save();
         TxtHint.Text = $"画面：{FitName(_fit)}" + (_zoom != 1.0 ? $" · {_zoom * 100:F0}%" : "") + " · 双击/F11 全屏";
         UpdateStageChrome();
+    }
+
+    /// <summary>
+    /// 自动适配：**不裁切**的前提下按当前屏幕等比放到最大（手机竖屏也不裁掉上下）。
+    /// 这是默认模式；窗口缩放、进/出全屏、手机改分辨率都由渲染层按 Uniform 自动跟随，
+    /// 不需要我们每帧算一遍。
+    /// </summary>
+    public void SetAutoFit()
+    {
+        _fitAuto = true;
+        _fit = Interop.CompositionVideoHost.VideoFit.Fit;
+        _fillMode = false;
+        _zoom = 1.0;
+        ApplyFillMode();
+        _host.Settings.MirrorFitAuto = true;
+        _host.Settings.MirrorFit = "Fit";
+        _host.Settings.MirrorZoom = 1.0;
+        _host.Settings.Save();
+        TxtHint.Text = "画面：自动适配（不裁切） · 双击/F11 全屏";
+        UpdateStageChrome();
+    }
+
+    /// <summary>舞台顶栏那枚「自动」小标：在自动 / 手动之间切换。</summary>
+    private void BtnStageAuto_Click(object sender, RoutedEventArgs e)
+    {
+        if (_fitAuto)
+        {
+            // 切到手动：保持"适应"，画面不会跳；手动按钮组随之出现
+            SetFit(_fit);
+            TxtStatus.Text = "已切换为手动调整：可以改适配方式与缩放";
+        }
+        else
+        {
+            SetAutoFit();
+            TxtStatus.Text = "已回到自动适配：不裁切、按屏幕最大化";
+        }
+        _lastBarActivity = DateTime.UtcNow;
     }
 
     /// <summary>舞台顶栏上的"正在看什么/怎么缩放"，跟着适配与缩放实时更新。</summary>
@@ -3287,6 +3441,21 @@ public partial class MainWindow : Window
         {
             if (BtnStageFit is not null) BtnStageFit.Content = FitName(_fit);
             if (TxtStageZoom is not null) TxtStageZoom.Text = $"{_zoom * 100:F0}%";
+
+            // 自动模式：手动那一组（适应/缩小/百分比/放大）整组收起，只留「自动」小标
+            if (FitManualGroup is not null)
+                FitManualGroup.Visibility = _fitAuto ? Visibility.Collapsed : Visibility.Visible;
+
+            if (BtnStageAuto is not null)
+            {
+                BtnStageAuto.Foreground = (Brush)FindResource(_fitAuto ? "B.Accent" : "B.MediaTextDim");
+                BtnStageAuto.ToolTip = _fitAuto
+                    ? "自动适配已开启：不裁切、按当前屏幕等比放到最大。点一下改为手动调整"
+                    : "回到自动适配（不裁切、按屏幕最大化）";
+            }
+
+            // 全屏时条上的适配按钮/菜单勾选也要跟着
+            _bar?.SetFitState(_fitAuto ? "Auto" : _fit.ToString(), _zoom);
         }
         catch { }
     }
@@ -4743,11 +4912,18 @@ public partial class MainWindow : Window
         {
             _miniAuto = false;
             HideMiniWindow();
+            return;
         }
-        else
+
+        // 没画面时开小窗只会得到一块空窗：什么都不做，并说明原因。
+        // （条上的按钮此时已经是禁用态，这里兜住快捷键/托盘等其它入口。）
+        if (!IsMirroringActive)
         {
-            ShowMiniWindow(auto: false);
+            ShowToast("还不能开小窗", "手机镜像开始后，小窗才有画面可显示。", null, null, ok: false);
+            return;
         }
+
+        ShowMiniWindow(auto: false);
     }
 
     /// <summary>

@@ -112,11 +112,21 @@ function Rect-Of($win) {
     return "{0},{1} {2}x{3}" -f [int]$r.X, [int]$r.Y, [int]$r.Width, [int]$r.Height
 }
 
-# 窗口模式常驻；全屏时鼠标靠近底部才出现 —— 点之前先把鼠标放过去
+# 窗口模式也会 3 秒自动收起；每次操作前把鼠标移到画面里，把条重新叫出来。
+# 取窗口底部往上 200px：既在画面区内，又不会被任务栏挡掉（窗口可能有一部分在屏幕外）。
+# 每次落点交替 ±30px：程序只把"鼠标真的动了"算作交互，同一个坐标点第二次不会唤醒。
+$script:barJiggle = 0
 function Show-Bar($win) {
     $r = $win.Current.BoundingRectangle
-    [BarWin]::SetCursorPos([int]($r.Left + $r.Width / 2), [int]($r.Bottom - 60)) | Out-Null
+    $script:barJiggle++
+    $y = [int]($r.Bottom - 200 - (($script:barJiggle % 2) * 30))
+    [BarWin]::SetCursorPos([int]($r.Left + $r.Width / 2), $y) | Out-Null
     Start-Sleep -Milliseconds 900
+}
+
+function Fresh-Bar($targetPid, $win, [string]$title = "控制条") {
+    Show-Bar $win
+    return (Bar $targetPid $title)
 }
 
 function Save-Shot($win, [string]$name, [int]$pad = 16) {
@@ -171,15 +181,18 @@ foreach ($dup in @("全屏", "退出全屏", "适应", "铺满", "拉伸", "原�
 
 # ============================================================ ③ 小窗按钮是开关
 Write-Host "`n=== ③ 「小窗」点一下开、再点一下关 ==="
+$bar = Fresh-Bar $p.Id $main
 Click (Find-ByName $bar "小窗") | Out-Null
 Start-Sleep -Milliseconds 1000
 Check ([bool]([BarWin]::Find($p.Id, "小窗") -ne [IntPtr]::Zero)) "点一下：小窗开了"
+$bar = Fresh-Bar $p.Id $main
 Click (Find-ByName $bar "小窗") | Out-Null
 Start-Sleep -Milliseconds 1000
 Check ([BarWin]::Find($p.Id, "小窗") -eq [IntPtr]::Zero) "再点一下：小窗关了"
 
 # ============================================================ ③b 音量弹层
 Write-Host "`n=== ③b 点喇叭：弹出音量滑杆；再点收起 ==="
+$bar = Fresh-Bar $p.Id $main
 Click (Find-ByNameLike $bar "电脑音量*") | Out-Null
 Start-Sleep -Milliseconds 900
 $vol = Bar $p.Id "音量"
@@ -189,14 +202,17 @@ if ($vol) {
     Check ([bool]$slider) "弹层里有音量滑杆"
     Save-Shot $vol "02-音量弹层"
 }
+$bar = Fresh-Bar $p.Id $main
 Click (Find-ByNameLike $bar "电脑音量*") | Out-Null
 Start-Sleep -Milliseconds 900
 Check ([BarWin]::Find($p.Id, "音量") -eq [IntPtr]::Zero -or -not (Bar $p.Id "音量").IsVisible()) "再点一次收起来了"
 
 # ============================================================ ③c 右键菜单
 Write-Host "`n=== ③c 右键控制条：常用功能菜单 ==="
+$bar = Fresh-Bar $p.Id $main
 $br = $bar.Current.BoundingRectangle
-[BarWin]::SetCursorPos([int]($br.Left + $br.Width / 2), [int]($br.Top + $br.Height / 2)) | Out-Null
+# 点条的**上半部**：窗口位置可能让条的下半截落到任务栏后面，点中心会点到任务栏上
+[BarWin]::SetCursorPos([int]($br.Left + $br.Width / 2), [int]($br.Top + 8)) | Out-Null
 Start-Sleep -Milliseconds 300
 [BarWin]::RightClick()
 Start-Sleep -Milliseconds 900
@@ -220,6 +236,8 @@ Start-Sleep -Milliseconds 400
 
 # ============================================================ ③d 侧栏折叠
 Write-Host "`n=== ③d 侧栏把手：收起 / 展开 ==="
+# 上次退出时的收起状态会记进设置：先把它归一成"展开"，再测收起/展开这一来一回。
+if (Find-ByName $main "展开侧栏") { Click (Find-ByName $main "展开侧栏") | Out-Null; Start-Sleep -Milliseconds 900 }
 $handle = Find-ByName $main "折叠侧栏"
 Check ([bool]$handle) "主界面上有「折叠侧栏」把手"
 Check ([bool](Find-ByName $main "接收端开关")) "收起前：侧栏的「接收端开关」看得见"
@@ -231,8 +249,37 @@ Click (Find-ByName $main "展开侧栏") | Out-Null
 Start-Sleep -Milliseconds 1200
 Check ([bool](Find-ByName $main "接收端开关")) "再点一下：侧栏回来了"
 
-# ============================================================ ④ 缩放搬去舞台顶栏后仍然可用
-Write-Host "`n=== ④ 舞台顶栏的缩放（原控制条上的那套）仍双向可用 ==="
+# ============================================================ ③d2 点画面（弹层外侧）也能收起
+# 放在最后：这一下真实点击会把焦点交给主窗口，之后合成的鼠标事件偶发不被接收
+# （与本用例无关的测试环境问题），所以别让它影响后面的断言。
+Write-Host "`n=== ③d2 音量弹层：点外侧区域应立即消失 ==="
+$bar = Fresh-Bar $p.Id $main
+Click (Find-ByNameLike $bar "电脑音量*") | Out-Null
+Start-Sleep -Milliseconds 700
+$vol = Bar $p.Id "音量"
+if ($vol) {
+    $mr = $main.Current.BoundingRectangle
+    [BarWin]::SetCursorPos([int]($mr.Left + $mr.Width * 0.35), [int]($mr.Top + $mr.Height * 0.45)) | Out-Null
+    Start-Sleep -Milliseconds 250
+    [BarWin]::Click()   # 点画面 -> 弹层失活 -> 应立刻收起
+    Start-Sleep -Milliseconds 700
+    $still = Bar $p.Id "音量"
+    Check (-not [bool]$still) "点画面后弹层自动消失了（不必再点音量键）"
+} else {
+    Bad "音量弹层没出现，无法验证外侧点击"
+}
+
+# ============================================================ ④ 自动适配 / 手动缩放
+Write-Host "`n=== ④ 自动适配默认开启；切手动后缩放仍双向可用 ==="
+$autoBtn = Find-ByName $main "自动适配"
+Check ([bool]$autoBtn) "舞台顶栏有「自动适配」小标"
+Check (-not [bool](Find-ByName $main "缩小画面")) "自动模式下不显示手动缩放按钮（界面更简洁）"
+if ($autoBtn) {
+    Click $autoBtn | Out-Null
+    Start-Sleep -Milliseconds 700
+}
+Check ([bool](Find-ByName $main "缩小画面")) "点「自动」切到手动后，缩放按钮出现"
+
 $zoom0 = Text-Of (Find-ById $main "StageZoomText")
 Click (Find-ByName $main "缩小画面") | Out-Null; Start-Sleep -Milliseconds 500
 Click (Find-ByName $main "缩小画面") | Out-Null; Start-Sleep -Milliseconds 700
@@ -244,29 +291,56 @@ Write-Host "  初始 $zoom0 → 两次缩小 $zoomOut → 两次放大 $zoomBack
 Check ($zoomOut -ne $zoom0) "缩小有效（$zoom0 → $zoomOut）"
 Check ($zoomBack -eq $zoom0) "放大能回到原值（$zoomOut → $zoomBack）"
 
+# 回到自动（后续全屏用例按默认模式跑）
+if (Find-ByName $main "自动适配") { Click (Find-ByName $main "自动适配") | Out-Null; Start-Sleep -Milliseconds 600 }
+
 # ============================================================ ⑤ 全屏：多一个「退出全屏」
 Write-Host "`n=== ⑤ 全屏时多一个「退出全屏」，双击画面也能进出 ==="
 $before = Rect-Of $main
 Click (Find-ByName $main "全屏") | Out-Null
 Start-Sleep -Seconds 4
-Show-Bar $main
-$bar = Bar $p.Id "控制条"
+$bar = Fresh-Bar $p.Id $main
 if (-not $bar) {
     Bad "全屏下没找到控制条"
 } else {
     $fsButtons = Bar-Buttons $bar
     Write-Host "  全屏下按钮：$($fsButtons -join ' | ')"
     Check ($fsButtons -contains "退出全屏") "全屏时出现「退出全屏」"
-    Check ($fsButtons.Count -eq 5) "全屏时 5 个按钮（实际 $($fsButtons.Count) 个）"
+    Check ($fsButtons -contains "画面适配") "全屏时出现「画面适配」（以前全屏根本改不了拉伸/原始）"
+    Check ($fsButtons.Count -eq 6) "全屏时 6 个按钮（实际 $($fsButtons.Count) 个）"
     Save-Shot $bar "04-全屏"
+
+    # 全屏下的画面适配菜单：自动 / 适应 / 铺满 / 拉伸 / 原始 + 缩放
+    Click (Find-ByName $bar "画面适配") | Out-Null
+    Start-Sleep -Milliseconds 800
+    $fitMenu = @()
+    $rootFit = [System.Windows.Automation.AutomationElement]::RootElement
+    $condFit = New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::ProcessIdProperty, $p.Id)
+    foreach ($w in $rootFit.FindAll([System.Windows.Automation.TreeScope]::Children, $condFit)) {
+        $miCond = New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::ControlTypeProperty, [System.Windows.Automation.ControlType]::MenuItem)
+        foreach ($m in $w.FindAll([System.Windows.Automation.TreeScope]::Descendants, $miCond)) { $fitMenu += $m.Current.Name }
+    }
+    Write-Host "  适配菜单：$($fitMenu -join ' | ')"
+    Check ([bool]($fitMenu | Where-Object { $_ -like "自动适配*" })) "菜单里有「自动适配」"
+    Check ([bool]($fitMenu | Where-Object { $_ -like "铺满*" })) "菜单里有「铺满」"
+    Check ([bool]($fitMenu | Where-Object { $_ -like "原始*" })) "菜单里有「原始」"
+    Check ([bool]($fitMenu | Where-Object { $_ -like "放大画面*" })) "菜单里有「放大画面」"
+    # 关菜单：点到画面中间
+    $mr2 = $main.Current.BoundingRectangle
+    [BarWin]::SetCursorPos([int]($mr2.Left + $mr2.Width * 0.5), [int]($mr2.Top + $mr2.Height * 0.45)) | Out-Null
+    Start-Sleep -Milliseconds 200
+    [BarWin]::Click()
+    Start-Sleep -Milliseconds 400
+    $bar = Fresh-Bar $p.Id $main
     Click (Find-ByName $bar "退出全屏") | Out-Null
     Start-Sleep -Seconds 3
     $main = Find-Window $p.Id "投屏Window"
     $after = Rect-Of $main
     Write-Host "  退出全屏：$before → $after"
     Check ($after -eq $before) "退出全屏后窗口尺寸恢复"
-    $back = Bar-Buttons (Bar $p.Id "控制条")
+    $back = Bar-Buttons (Fresh-Bar $p.Id $main)
     Check (-not ($back -contains "退出全屏")) "回到窗口模式后「退出全屏」又收掉了"
+    Check (-not ($back -contains "画面适配")) "窗口模式不重复舞台顶栏的适配按钮"
 }
 
 # 双击画面 = 进全屏；再双击 = 退出（Esc 退出全屏另有按键路径）

@@ -61,7 +61,7 @@ public partial class SettingsWindow : Window
         SwIntro.IsChecked = s.ShowIntro;
         InitIntroVideoSection(s);
         SldZoom.Value = Math.Clamp(s.MirrorZoom * 100, 50, 200);
-        UpdateFitButtons(s.MirrorFit);
+        UpdateFitButtons(s.MirrorFitAuto ? "Auto" : s.MirrorFit);
 
         var theme = string.IsNullOrWhiteSpace(s.Theme) ? "Dark" : s.Theme;
         SegDark.IsChecked = theme.Equals("Dark", StringComparison.OrdinalIgnoreCase);
@@ -104,6 +104,7 @@ public partial class SettingsWindow : Window
         SwAutoFullscreen.IsChecked = cfg.AutoFullscreen;
         SwHideCursor.IsChecked = cfg.HideCursorInFullscreen;
         SwPreventSleep.IsChecked = cfg.PreventSleep;
+        InitBarAutoHide(cfg);
         SegComfortable.IsChecked = !cfg.Density.Equals("Compact", StringComparison.OrdinalIgnoreCase);
         SegCompact.IsChecked = cfg.Density.Equals("Compact", StringComparison.OrdinalIgnoreCase);
         UpdateQualityButtons(cfg.QualityPreset);
@@ -1341,27 +1342,68 @@ public partial class SettingsWindow : Window
 
     // ------------------------------------------------------------------ 画面
 
+    /// <summary>悬浮控制条自动消失的可选秒数（0 = 常驻）。</summary>
+    private static readonly int[] BarAutoHideChoices = { 0, 2, 3, 5, 8 };
+
+    private void InitBarAutoHide(CastSettings cfg)
+    {
+        CmbBarAutoHide.Items.Clear();
+        foreach (int seconds in BarAutoHideChoices)
+            CmbBarAutoHide.Items.Add(seconds <= 0 ? "不自动消失" : $"{seconds} 秒后消失");
+
+        // 取最接近的一档：配置文件被手改过（例如 4）时不至于落到空选项上
+        int want = Math.Clamp(cfg.BarAutoHideSeconds, 0, 60);
+        int best = 0;
+        for (int i = 1; i < BarAutoHideChoices.Length; i++)
+        {
+            if (Math.Abs(BarAutoHideChoices[i] - want) < Math.Abs(BarAutoHideChoices[best] - want)) best = i;
+        }
+        CmbBarAutoHide.SelectedIndex = best;
+    }
+
+    private void BarAutoHide_Changed(object sender, SelectionChangedEventArgs e)
+    {
+        if (!_loaded) return;
+        int seconds = BarAutoHideChoices[Math.Max(0, CmbBarAutoHide.SelectedIndex)];
+        _host.Settings.BarAutoHideSeconds = seconds;
+        _host.Settings.Save();
+        (Application.Current.MainWindow as MainWindow)?.ApplyBarAutoHideSetting();
+        TxtSaved.Text = seconds <= 0 ? "控制条改为常驻" : $"控制条无操作 {seconds} 秒后自动消失";
+    }
+
     private void BtnFit_Click(object sender, RoutedEventArgs e)
     {
         if (sender is not Button b || b.Tag is not string tag) return;
-        _host.Settings.MirrorFit = tag;
+        bool auto = string.Equals(tag, "Auto", StringComparison.OrdinalIgnoreCase);
+        _host.Settings.MirrorFitAuto = auto;
+        _host.Settings.MirrorFit = auto ? "Fit" : tag;
         _host.Settings.Save();
         UpdateFitButtons(tag);
         if (Application.Current.MainWindow is MainWindow main)
-            main.SetFit(tag switch
+        {
+            if (auto)
             {
-                "Fill" => Interop.CompositionVideoHost.VideoFit.Fill,
-                "Stretch" => Interop.CompositionVideoHost.VideoFit.Stretch,
-                "Native" => Interop.CompositionVideoHost.VideoFit.Native,
-                _ => Interop.CompositionVideoHost.VideoFit.Fit,
-            });
+                main.SetAutoFit();
+            }
+            else
+            {
+                main.SetFit(tag switch
+                {
+                    "Fill" => Interop.CompositionVideoHost.VideoFit.Fill,
+                    "Stretch" => Interop.CompositionVideoHost.VideoFit.Stretch,
+                    "Native" => Interop.CompositionVideoHost.VideoFit.Native,
+                    _ => Interop.CompositionVideoHost.VideoFit.Fit,
+                });
+            }
+        }
     }
 
     private void UpdateFitButtons(string current)
     {
         foreach (var (btn, tag) in new[]
                  {
-                     (BtnFitFit, "Fit"), (BtnFitFill, "Fill"), (BtnFitStretch, "Stretch"), (BtnFitNative, "Native"),
+                     (BtnFitAuto, "Auto"), (BtnFitFit, "Fit"), (BtnFitFill, "Fill"),
+                     (BtnFitStretch, "Stretch"), (BtnFitNative, "Native"),
                  })
         {
             if (btn is null) continue;
@@ -1381,9 +1423,12 @@ public partial class SettingsWindow : Window
     {
         if (TxtZoomValue is not null) TxtZoomValue.Text = $"{e.NewValue:F0}%";
         if (!_loaded) return;
+        // 调缩放 = 手动调整：自动适配让位（主窗口里 SetZoom 会把 MirrorFitAuto 置 false）
         _host.Settings.MirrorZoom = e.NewValue / 100.0;
+        _host.Settings.MirrorFitAuto = false;
         _host.Settings.Save();
         if (Application.Current.MainWindow is MainWindow main) main.SetZoom(e.NewValue / 100.0);
+        UpdateFitButtons(_host.Settings.MirrorFit);
     }
 
     private void BtnZoomReset_Click(object sender, RoutedEventArgs e) => SldZoom.Value = 100;
@@ -1577,6 +1622,7 @@ public partial class SettingsWindow : Window
         s.AutoFullscreen = SwAutoFullscreen.IsChecked == true;
         s.HideCursorInFullscreen = SwHideCursor.IsChecked == true;
         s.PreventSleep = SwPreventSleep.IsChecked == true;
+        s.BarAutoHideSeconds = BarAutoHideChoices[Math.Max(0, CmbBarAutoHide.SelectedIndex)];
         s.ClearCapturesOnExit = SwClearOnExit.IsChecked == true;
 
         // 安全页
@@ -1602,6 +1648,7 @@ public partial class SettingsWindow : Window
             mw.ApplyGlobalHotkeySetting(s.GlobalHotkeys);
             mw.ApplyMica(s.UseMica);
             mw.ApplyAntiCapture();     // 防截屏开关：改完立刻生效，不用重启
+            mw.ApplyBarAutoHideSetting();
         }
         RefreshAntiCaptureState();
         RefreshHotkeyState();
