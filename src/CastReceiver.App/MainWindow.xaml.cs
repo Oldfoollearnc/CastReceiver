@@ -1669,11 +1669,11 @@ public partial class MainWindow : Window
     {
         var win = new SettingsWindow(_host, RenderChannelProbeAsync) { Owner = this };
         win.ShowDialog();
+        // LoadSettingsIntoUi 里已经按"自动 / 手动"重读了适配与缩放，
+        // 这里不要再单独覆盖 _fit/_zoom —— 否则自动模式会被设置里的旧手动值顶掉。
         LoadSettingsIntoUi();
         _host.Miracast.MuteAudio = _host.Settings.MuteAudio;
         ApplyVolumeToHosts();
-        _fit = ParseFit(_host.Settings.MirrorFit);
-        _zoom = Math.Clamp(_host.Settings.MirrorZoom, 0.5, 2.0);
         ApplyFillMode();
         if (!_host.Settings.ShowStats) _stats?.Hide();
         UpdateAppearanceIcon();

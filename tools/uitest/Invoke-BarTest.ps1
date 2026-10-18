@@ -294,6 +294,44 @@ Check ($zoomBack -eq $zoom0) "放大能回到原值（$zoomOut → $zoomBack）"
 # 回到自动（后续全屏用例按默认模式跑）
 if (Find-ByName $main "自动适配") { Click (Find-ByName $main "自动适配") | Out-Null; Start-Sleep -Milliseconds 600 }
 
+# ============================================================ ④b 设置 → 画面：新增入口都在
+Write-Host "`n=== ④b 设置 → 画面：自动适配 / 悬浮条秒数入口 ==="
+# 全屏来回切过之后，先前拿到的自动化元素可能已经过期：重新取一次主窗口
+$main = Find-Window $p.Id "投屏Window"
+$btnSettings = Find-ByName $main "设置"
+Write-Host ("  设置按钮：{0}" -f $(if ($btnSettings) { $btnSettings.Current.ControlType.ProgrammaticName } else { "未找到" }))
+Write-Host ("  点击结果：{0}" -f (Click $btnSettings))
+Start-Sleep -Seconds 4
+$settings = Find-Window $p.Id "设置"
+if (-not $settings) {
+    # ShowDialog 的窗口是 owner 的子窗口，UIA 有时不把它列在根节点的直接子级里：
+    # 退一步在主窗口的子树里找 ControlType=Window 的那一层。
+    $cw = New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::ControlTypeProperty, [System.Windows.Automation.ControlType]::Window)
+    $settings = $main.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $cw)
+}
+if (-not $settings) {
+    $names = @()
+    $root6 = [System.Windows.Automation.AutomationElement]::RootElement
+    foreach ($w in $root6.FindAll([System.Windows.Automation.TreeScope]::Children, [System.Windows.Automation.Condition]::TrueCondition)) {
+        $names += ("{0}#{1}" -f $w.Current.Name, $w.Current.ProcessId)
+    }
+    Write-Host "  全部顶层窗口：$($names -join ' / ')"
+    Bad "设置窗口没打开"
+} else {
+    $nav = Find-ByName $settings "画面"
+    if ($nav) {
+        try { $nav.GetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern).Select() }
+        catch { try { $nav.GetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern).Toggle() } catch { } }
+        Start-Sleep -Milliseconds 900
+    }
+    Check ([bool](Find-ByName $settings "自动")) "设置 → 画面 有「自动」适配选项"
+    Check ([bool](Find-ByName $settings "悬浮控制条自动消失秒数")) "设置 → 画面 有「悬浮控制条自动消失秒数」"
+    Save-Shot $settings "05-设置-画面"
+    $closeSettings = Find-ByName $settings "关闭"
+    if ($closeSettings) { Click $closeSettings | Out-Null }
+    Start-Sleep -Milliseconds 800
+}
+
 # ============================================================ ⑤ 全屏：多一个「退出全屏」
 Write-Host "`n=== ⑤ 全屏时多一个「退出全屏」，双击画面也能进出 ==="
 $before = Rect-Of $main
