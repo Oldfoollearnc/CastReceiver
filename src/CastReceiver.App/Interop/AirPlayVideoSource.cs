@@ -90,8 +90,20 @@ internal sealed class AirPlayVideoSource : IDisposable
 
     private bool _started;
 
+    /// <summary>
+    /// 解码器还没有任何参考帧：先把非关键帧丢掉，等第一个 IDR 再起解。
+    /// 不做这一步的话，会话开始那一下会先解出 1–2 秒的花屏（P 帧引用了不存在的帧）。
+    /// </summary>
+    private bool _needFirstKeyFrame = true;
+
+    /// <summary>第一帧到达的时间（等 IDR 的兜底用；一帧都没来时为 null）。</summary>
+    private DateTime? _firstFrameUtc;
+
+    /// <summary>等第一个 IDR 的上限：超过就收下当前帧，宁可短暂瑕疵也不要一直黑着。</summary>
+    private static readonly TimeSpan FirstKeyFrameTimeout = TimeSpan.FromMilliseconds(1500);
+
     /// <summary>推送但尚未被解码器取走的帧的上限；超出时清空积压并等关键帧（直播以"跟上"为先）。</summary>
-    public AirPlayVideoSource(int width = 1920, int height = 1080, int capacity = 16, int fps = 30)
+    public AirPlayVideoSource(int width = 1920, int height = 1080, int capacity = 8, int fps = 30)
     {
         if (capacity < 1)
         {
@@ -159,7 +171,7 @@ internal sealed class AirPlayVideoSource : IDisposable
         {
             lock (_gate)
             {
-                return _frameGate.WaitingForKeyFrame;
+                return (_needFirstKeyFrame && _firstFrameUtc is not null) || _frameGate.WaitingForKeyFrame;
             }
         }
     }
@@ -194,6 +206,20 @@ internal sealed class AirPlayVideoSource : IDisposable
             if (_streamSource is null)
             {
                 return;
+            }
+
+            // 起播必须从 IDR 开始：解码器拿到一个引用不存在参考帧的 P 帧，只会解出花屏。
+            if (_needFirstKeyFrame)
+            {
+                _firstFrameUtc ??= DateTime.UtcNow;
+                if (!frame.IsKeyFrame && DateTime.UtcNow - _firstFrameUtc.Value < FirstKeyFrameTimeout)
+                {
+                    DroppedCount++;
+                    return;
+                }
+
+                _needFirstKeyFrame = false;
+                _frameGate.Reset();   // 明确从"不在等关键帧"的状态开始
             }
 
             // 先问策略：这一帧收不收、要不要先清空积压。必须用**入队前**的积压数判断。
@@ -376,6 +402,9 @@ internal sealed class AirPlayVideoSource : IDisposable
             DrainQueueLocked();
             _clock.Reset();
             _frameGate.Reset();
+            // 积压清空后解码器等于重新起解：下一个 IDR 之前的内容都别再喂进去
+            _needFirstKeyFrame = true;
+            _firstFrameUtc = null;
         }
     }
 

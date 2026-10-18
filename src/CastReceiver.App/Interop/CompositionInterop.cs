@@ -396,7 +396,9 @@ public sealed class CompositionVideoHost : HwndHost
             var session = player.PlaybackSession;
             int w = (int)session.NaturalVideoWidth, h = (int)session.NaturalVideoHeight;
             if (w <= 0 || h <= 0) return;
-            if (w == _surfaceWidth && h == _surfaceHeight) return;
+            // 1–2 像素的抖动不值得重建渲染表面：换表面的瞬间画面会闪一下，
+            // 而手机（尤其带圆角裁切的机型）偶尔就会报出一个差几个像素的尺寸。
+            if (Math.Abs(w - _surfaceWidth) <= 2 && Math.Abs(h - _surfaceHeight) <= 2) return;
             if (_compositor is null) return;
 
             player.SetSurfaceSize(new Windows.Foundation.Size(w, h));

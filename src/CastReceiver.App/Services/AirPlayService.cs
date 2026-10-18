@@ -360,7 +360,9 @@ public sealed class AirPlayService : IDisposable
         // 每一路各自一个解码器：这样两路帧不会互相插帧，非聚焦的那几路也能出画（宫格要用）。
         // 描述符里的分辨率/帧率必须与 /info 向手机请求的一致（否则管线会等帧/按错误尺寸出画）。
         AirPlayQualityProfile profile = _profile;
-        var video = new AirPlayVideoSource(profile.Width, profile.Height, capacity: 16, fps: profile.MaxFPS);
+        // 积压上限 8 帧（30fps ≈ 265ms）：直播镜像要的是"跟得上"。
+        // 原先给 16 帧，等于允许积压半秒 —— 一旦解码端抖一下，用户先看到的就是半秒延迟再追帧。
+        var video = new AirPlayVideoSource(profile.Width, profile.Height, capacity: 8, fps: profile.MaxFPS);
         video.Status += m => StatusChanged?.Invoke(m);
         _log.Debug("airplay", $"新会话 {sessionId}：解码器按 {profile.Spec} 建立（{profile.Reason}）");
 

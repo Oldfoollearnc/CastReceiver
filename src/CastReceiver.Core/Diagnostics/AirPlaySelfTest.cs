@@ -97,9 +97,10 @@ internal static class AirPlaySelfTest
             TimeSpan backward = clock.Map(t0 + step - 1000);
             bool backwardOk = backward > third && clock.LastWasDiscontinuity;
 
-            // 向前大跳 3 秒：重新锚定到"上一帧 + 一个标称帧长"，不能把 3 秒后的时间交给播放器
+            // 向前大跳 3 秒：重新锚定到"上一帧 + 一个标称帧长"，不能把 3 秒后的时间交给播放器；
+            // 但**不能**标不连续 —— 静止画面停顿是正常现象，标了会让解码器白白重置参考链（花屏）。
             TimeSpan jumped = clock.Map(t0 + step * 2 + (3UL << 32));
-            bool jumpOk = clock.LastWasDiscontinuity
+            bool jumpOk = !clock.LastWasDiscontinuity
                           && jumped > backward
                           && jumped - backward <= TimeSpan.FromMilliseconds(40);
 
@@ -107,10 +108,10 @@ internal static class AirPlaySelfTest
             bool resetOk = clock.Map(t0 + (5UL << 32)) == TimeSpan.Zero;
 
             bool ok = firstOk && cadenceOk && backwardOk && jumpOk && resetOk;
-            add(Group, "时间戳规整：首帧归零 / 单调 / 倒退与大跳重新锚定", ok,
+            add(Group, "时间戳规整：首帧归零 / 单调 / 倒退标不连续 / 前跳只压缩不重置", ok,
                 $"首帧 {first.TotalMilliseconds:F0}ms，第二帧 {second.TotalMilliseconds:F1}ms，"
                 + $"倒退后 {backward.TotalMilliseconds:F1}ms（不连续={backwardOk}），"
-                + $"大跳后 {jumped.TotalMilliseconds:F1}ms");
+                + $"大跳后 {jumped.TotalMilliseconds:F1}ms（不连续={clock.LastWasDiscontinuity}）");
         }
         catch (Exception ex)
         {

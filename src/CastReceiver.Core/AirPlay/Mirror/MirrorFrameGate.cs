@@ -32,6 +32,8 @@ public enum FrameDisposition
 /// 等待超过 <see cref="MaxWaitForKeyFrame"/> 就放弃等待、收下当前帧（宁可短暂瑕疵，
 /// 也不要一直冻着），并如实计数。
 ///
+/// 等待上限刻意压到 1.2 秒：IDR 通常每秒都有，等太久换来的就是用户能察觉的定格。
+///
 /// 时间戳由调用方按自己的节奏继续推：丢帧只是**跳过了这段时间的内容**，
 /// 不会把延迟越积越多（直播要的就是"跟得上"，不是"一帧不落"）。
 /// </summary>
@@ -42,7 +44,7 @@ public sealed class MirrorFrameGate
 
     /// <param name="capacity">允许积压的帧数上限（超过就进入重同步）。</param>
     /// <param name="maxWaitForKeyFrameSeconds">等关键帧的兜底上限（秒）。</param>
-    public MirrorFrameGate(int capacity = 8, double maxWaitForKeyFrameSeconds = 2.0)
+    public MirrorFrameGate(int capacity = 8, double maxWaitForKeyFrameSeconds = 1.2)
     {
         if (capacity < 1)
         {

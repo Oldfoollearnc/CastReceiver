@@ -268,19 +268,26 @@ public sealed class MirrorStreamReceiver : IDisposable
 
         bool keyFrame = IsKeyFrame(payload.AsSpan(0, outLength));
 
-        if (_configPending && _configAnnexB is not null && _configTimestamp == timestamp)
+        // SPS/PPS 要跟着关键帧走：解码器每次重新起解（会话开始、重同步、表面重建）都需要
+        // 先拿到参数集，否则那一小段就是花屏。缓存里的配置很小（几十字节），
+        // 每个 IDR 前面都补一份比"指望时间戳刚好对上"稳得多。
+        bool injectCachedConfig = keyFrame
+                                  && _configAnnexB is not null
+                                  && !StartsWithSps(payload.AsSpan(0, outLength));
+
+        if (injectCachedConfig || (_configPending && _configAnnexB is not null && _configTimestamp == timestamp))
         {
-            // SPS/PPS 与紧随其后的 IDR 共用同一个时间戳，这时才注入。
             // 前缀需要一块连续内存，只好再借一块（同样来自池，不落大对象堆）。
-            byte[] combined = ArrayPool<byte>.Shared.Rent(_configAnnexB.Length + outLength);
+            byte[] config = _configAnnexB!;
+            byte[] combined = ArrayPool<byte>.Shared.Rent(config.Length + outLength);
             try
             {
-                Array.Copy(_configAnnexB, 0, combined, 0, _configAnnexB.Length);
-                Array.Copy(payload, 0, combined, _configAnnexB.Length, outLength);
+                Array.Copy(config, 0, combined, 0, config.Length);
+                Array.Copy(payload, 0, combined, config.Length, outLength);
                 _configPending = false;
 
                 FrameCount++;
-                FrameReady?.Invoke(new MirrorFrame(combined, _configAnnexB.Length + outLength, timestamp, keyFrame));
+                FrameReady?.Invoke(new MirrorFrame(combined, config.Length + outLength, timestamp, keyFrame));
             }
             finally
             {
@@ -426,6 +433,12 @@ public sealed class MirrorStreamReceiver : IDisposable
         }
         return false;
     }
+
+    /// <summary>这一帧是不是以 SPS（NAL 类型 7）开头（已经带参数集，不必再补）。</summary>
+    internal static bool StartsWithSps(ReadOnlySpan<byte> annexB)
+        => annexB.Length >= 5
+           && annexB[0] == 0 && annexB[1] == 0 && annexB[2] == 0 && annexB[3] == 1
+           && (annexB[4] & 0x1F) == 7;
 
     /// <summary>找下一个 4 字节起始码的位置；没有则返回 -1。</summary>
     private static int IndexOfStartCode(ReadOnlySpan<byte> data, int from)
