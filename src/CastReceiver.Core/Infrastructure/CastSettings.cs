@@ -418,35 +418,60 @@ public sealed class CastSettings
     /// <summary>最近一次保存失败的原因（空＝没失败）。给界面用，免得又静默失败。</summary>
     [JsonIgnore] public string LastSaveError { get; private set; } = "";
 
+    // 启动阶段 Load() 会被调用好几次（入场动画取窗口矩形 → 闪屏几何 → 宿主），
+    // 每次都"读盘 + 反序列化 + 回写"是白付的三份 I/O。文件没被外部改过时直接复用同一份实例。
+    private static CastSettings? _cached;
+    private static string _cachedPath = "";
+    private static DateTime _cachedWriteUtc;
+
     public static CastSettings Load()
     {
         string dir = RootOverride
                      ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "CastReceiver");
         Directory.CreateDirectory(dir);
         string path = Path.Combine(dir, "settings.json");
+
+        // 命中缓存：同一次启动里的后续调用（以及 Save 之后的读）都不再碰磁盘
+        if (_cached is not null && string.Equals(_cachedPath, path, StringComparison.Ordinal))
+        {
+            try
+            {
+                if (File.Exists(path) && File.GetLastWriteTimeUtc(path) == _cachedWriteUtc) return _cached;
+            }
+            catch { }
+        }
+
         CastSettings s;
+        bool dirty;
         try
         {
-            s = File.Exists(path)
-                ? JsonSerializer.Deserialize<CastSettings>(File.ReadAllText(path), JsonOpts) ?? new CastSettings()
-                : new CastSettings();
+            dirty = !File.Exists(path);
+            s = dirty
+                ? new CastSettings()
+                : JsonSerializer.Deserialize<CastSettings>(File.ReadAllText(path), JsonOpts) ?? new CastSettings();
         }
-        catch { s = new CastSettings(); }
+        catch { s = new CastSettings(); dirty = true; }
 
-        if (string.IsNullOrWhiteSpace(s.DeviceUuid)) s.DeviceUuid = Guid.NewGuid().ToString("D");
+        if (string.IsNullOrWhiteSpace(s.DeviceUuid)) { s.DeviceUuid = Guid.NewGuid().ToString("D"); dirty = true; }
         // 设备名：没填过、或还是旧版本的 "PC"，都换成当前 Windows 账户名；用户改过的名字保留
-        s.DeviceName = ResolveDeviceName(s.DeviceName);
-        if (s.HttpPort is < 1024 or > 65535) s.HttpPort = 2869;
+        string deviceName = ResolveDeviceName(s.DeviceName);
+        if (!string.Equals(deviceName, s.DeviceName, StringComparison.Ordinal)) { s.DeviceName = deviceName; dirty = true; }
+        if (s.HttpPort is < 1024 or > 65535) { s.HttpPort = 2869; dirty = true; }
 
         // 清理一次开发期的试验强调色（极光蓝紫）：产品方向已回到原来的薄荷绿极简风。
         // 之后用户自己在设置里选的强调色不会再被改动。
         if (s.Accent.Equals("Aurora", StringComparison.OrdinalIgnoreCase))
         {
             s.Accent = "Mint";
+            dirty = true;
         }
 
         s.FilePath = path;
-        s.Save();
+        if (dirty) s.Save();
+        _cached = s;
+        _cachedPath = path;
+        try { _cachedWriteUtc = File.Exists(path) ? File.GetLastWriteTimeUtc(path) : DateTime.MinValue; }
+        catch { _cachedWriteUtc = DateTime.MinValue; }
         return s;
     }
 
@@ -457,6 +482,12 @@ public sealed class CastSettings
             if (string.IsNullOrWhiteSpace(FilePath)) return;
             File.WriteAllText(FilePath, JsonSerializer.Serialize(this, JsonOpts));
             LastSaveError = "";
+            // 自己写下去的当然是最新的：把缓存时间戳对齐，避免下一次 Load() 又白读一遍磁盘
+            if (ReferenceEquals(_cached, this))
+            {
+                _cachedPath = FilePath;
+                try { _cachedWriteUtc = File.GetLastWriteTimeUtc(FilePath); } catch { }
+            }
         }
         catch (Exception ex)
         {

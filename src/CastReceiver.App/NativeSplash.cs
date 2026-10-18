@@ -91,6 +91,7 @@ internal static class NativeSplash
     private static int _fgColor = 0x00EFEDEC;    // #ECEDEF
     private static int _dimColor = 0x00AEA6A0;   // #A0A6AE
     private static int _lineColor = 0x00302A26;  // #262A30
+    private static int _accentColor = 0x0097DC3D; // #3DDC97（薄荷绿，强调色默认值）
     private static string _step = "正在启动…";
 
     // 黑幕的几何：给的就是主窗口的位置与大小（不再全屏）
@@ -101,15 +102,16 @@ internal static class NativeSplash
 
     public static bool IsVisible => _hwnd != IntPtr.Zero;
 
-    /// <summary>按主题配色显示启动动画（颜色为 #RRGGBB 字符串）。</summary>
+    /// <summary>按主题配色显示启动画面（颜色为 #RRGGBB 字符串）。</summary>
     public static void Show(string step, string bg, string fg, string dim, string line,
-        int x = int.MinValue, int y = int.MinValue, int w = 0, int h = 0)
+        int x = int.MinValue, int y = int.MinValue, int w = 0, int h = 0, string accent = "#3DDC97")
     {
         _x = x; _y = y; _w = w; _h = h;
         _bgColor = ParseColor(bg, 0x0B0C0E);
         _fgColor = ParseColor(fg, 0xECEDEF);
         _dimColor = ParseColor(dim, 0xA0A6AE);
         _lineColor = ParseColor(line, 0x262A30);
+        _accentColor = ParseColor(accent, 0x3DDC97);
         Show(step);
     }
 
@@ -217,11 +219,42 @@ internal static class NativeSplash
         {
             GetClientRect(hwnd, out var rect);
 
-            // 只铺满纯黑：这不再是"一个转圈小窗"，而是全屏的一块黑幕，
-            // 紧接着就由主窗口的入场遮罩从黑里把画面淡出来 —— 视觉上是连贯的一次淡入。
             IntPtr bg = CreateSolidBrush(_bgColor);
             FillRect(hdc, ref rect, bg);
             DeleteObject(bg);
+
+            // 只有开屏动画关掉时才会看到它。以前这里只铺一块纯黑 —— 用户看到的是
+            // "点了图标先黑屏"。现在画一块**品牌启动画面**：名字 + 一句当前进度，
+            // 没有任何转圈，视觉上更像"已经打开了、正在准备"，而不是在等。
+            int cx = (rect.Left + rect.Right) / 2;
+            int cy = (rect.Top + rect.Bottom) / 2;
+
+            SetBkMode(hdc, 1 /*TRANSPARENT*/);
+
+            IntPtr titleFont = CreateFontW(-30, 0, 0, 0, 600, 0, 0, 0, 1, 0, 0, 5 /*CLEARTYPE_QUALITY*/, 0, "Microsoft YaHei UI");
+            IntPtr oldFont = titleFont != IntPtr.Zero ? SelectObject(hdc, titleFont) : IntPtr.Zero;
+            SetTextColor(hdc, _fgColor);
+            var titleRect = new Rect { Left = rect.Left, Top = cy - 54, Right = rect.Right, Bottom = cy - 8 };
+            DrawTextW(hdc, "投屏Window", -1, ref titleRect, DtCenter | DtVCenter | DtSingleLine);
+
+            // 标题下一条很短的薄荷绿细线：呼吸式宽度，暗示"在动"，但不是进度条也不是转圈
+            int lineWidth = 26 + (int)(Math.Abs(Math.Sin(_angle * Math.PI / 180.0)) * 22);
+            IntPtr pen = CreatePen(0, 2, _accentColor);
+            IntPtr oldPen = pen != IntPtr.Zero ? SelectObject(hdc, pen) : IntPtr.Zero;
+            MoveToEx(hdc, cx - lineWidth / 2, cy + 6, IntPtr.Zero);
+            LineTo(hdc, cx + lineWidth / 2, cy + 6);
+            if (oldPen != IntPtr.Zero) SelectObject(hdc, oldPen);
+            if (pen != IntPtr.Zero) DeleteObject(pen);
+
+            IntPtr stepFont = CreateFontW(-14, 0, 0, 0, 400, 0, 0, 0, 1, 0, 0, 5, 0, "Microsoft YaHei UI");
+            if (stepFont != IntPtr.Zero) SelectObject(hdc, stepFont);
+            SetTextColor(hdc, _dimColor);
+            var stepRect = new Rect { Left = rect.Left, Top = cy + 22, Right = rect.Right, Bottom = cy + 48 };
+            DrawTextW(hdc, _step, -1, ref stepRect, DtCenter | DtVCenter | DtSingleLine);
+
+            if (stepFont != IntPtr.Zero) DeleteObject(stepFont);
+            if (oldFont != IntPtr.Zero) SelectObject(hdc, oldFont);
+            if (titleFont != IntPtr.Zero) DeleteObject(titleFont);
         }
         catch (Exception ex) { Bootstrap.Log("启动黑幕绘制异常：" + ex.Message); }
         finally { EndPaint(hwnd, ref paint); }

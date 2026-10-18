@@ -120,7 +120,7 @@ public partial class MainWindow : Window
 
     private readonly Stopwatch _tickWatch = Stopwatch.StartNew();
     private TimeSpan _lastTick;
-    private bool _busyShown = true;
+    private bool _busyShown;
 
     /// <summary>窗口入场动效只播一次（重连/重绘不该重播）。</summary>
     private bool _entrancePlayed;
@@ -283,7 +283,8 @@ public partial class MainWindow : Window
             (_, _) => HealLeftoverIntroWindow(), Dispatcher);
         healTimer.Start();
 
-        InitTrayAndHotkeys();
+        // 托盘与全局快捷键推迟到 Loaded（见 OnLoaded）：它们是系统调用，
+        // 和"窗口第一帧"无关，压在构造函数里只会让启动看起来更慢。
         BuildTipDots();
         ShowTipPage(0, animate: false);
         try { Microsoft.Win32.SystemEvents.SessionSwitch += OnSessionSwitch; } catch { }
@@ -309,6 +310,41 @@ public partial class MainWindow : Window
             TxtVersion.Text = version is null ? "v2.1.1" : $"v{version.Major}.{version.Minor}.{version.Build}";
         }
         catch { }
+
+        // 启动路径上最慢的两段（平台接收端 2–4 秒、网络探测要起 netsh 子进程）与"窗口第一帧"
+        // 没有依赖关系：现在就把它们放出去跑，等窗口真正显示出来时往往已经有结果。
+        // 事件在 HookHostEvents 里已经挂好，所以提前启动不会漏事件。
+        _startupNetwork = PollNetworkAsync();
+        _startupReceivers = StartReceiversEarlyAsync();
+    }
+
+    /// <summary>启动期并行任务：网络探测（OnLoaded 里等它）。</summary>
+    private Task? _startupNetwork;
+
+    /// <summary>启动期并行任务：接收端（OnLoaded 里等它）。</summary>
+    private Task? _startupReceivers;
+
+    /// <summary>
+    /// 尽早点亮接收端：窗口对象已经建好、事件已挂，但界面还没显示 ——
+    /// 正好用"解析布局 + 首帧渲染"的这段时间把平台调用跑掉。
+    /// </summary>
+    private async Task StartReceiversEarlyAsync()
+    {
+        try
+        {
+            if (_host.Settings.AutoStartMiracast && !_host.Miracast.IsListening)
+            {
+                await StartMirrorAsync(showError: false);   // 内部同时会拉起 AirPlay
+            }
+            else if (_host.Settings.AutoStartAirPlay && !_host.AirPlay.IsRunning)
+            {
+                _host.StartAirPlay();
+            }
+        }
+        catch (Exception ex)
+        {
+            _host.Log.Warn("startup", "接收端启动异常：" + ex.Message);
+        }
     }
 
     // ------------------------------------------------------------------ 初始化
@@ -1049,7 +1085,7 @@ public partial class MainWindow : Window
 
     private async void OnLoaded(object sender, RoutedEventArgs e)
     {
-        ShowBusy("正在初始化…");
+        Bootstrap.Log("主窗口 Loaded");
 
         // 入场动画先起播（下面紧接着要进全屏；顺序反了的话，进全屏时会把控制条显示出来盖在动画上）
         StartIntroIfEnabled();
@@ -1064,30 +1100,29 @@ public partial class MainWindow : Window
         _host.Miracast.QualityPreset = _host.Settings.QualityPreset;
         RefreshUi();
 
+        // 托盘图标与全局快捷键都是系统调用（Shell_NotifyIcon / RegisterHotKey），
+        // 和"第一帧出来"没有关系：挪到界面显示之后再注册，别让它们挤在启动路径上。
+        Dispatcher.BeginInvoke(InitTrayAndHotkeys, DispatcherPriority.ApplicationIdle);
+
+        // 首帧已经出来了：界面本身立刻可用，剩下的准备工作并行在后台做。
+        // 这里**刻意不再** Task.Delay(100) —— 那 100ms 纯粹是白等，用户只会觉得"点了没反应"。
         await Dispatcher.Yield(DispatcherPriority.ApplicationIdle);
-        await Task.Delay(100);
+        Bootstrap.Log("界面首帧已渲染");
 
-        TxtBusyText.Text = "正在检测网络…";
-        await PollNetworkAsync();
-
-        if (_host.Settings.AutoStartMiracast && !_host.Miracast.IsListening)
-        {
-            TxtBusyText.Text = "正在开启镜像接收…";
-            await StartMirrorAsync(showError: false);
-        }
-        else if (_host.Settings.AutoStartAirPlay && !_host.AirPlay.IsRunning)
-        {
-            // 用户只开了 AirPlay（关掉 Miracast 自动启动）时也要广播
-            _host.StartAirPlay();
-        }
-
-        TxtBusyText.Text = "准备就绪";
-        RefreshUi();
-        await Task.Delay(160);
-        HideBusy();
-        PlayEntrance();            // 遮罩淡出的同时，界面内容错峰入场
+        // 界面入场动效同步开始：不用等网络探测/接收端就绪，视觉上"已经打开了"。
+        PlayEntrance();
         ShowBar();                 // 控制条在窗口模式下也常驻（浮在画面底部）
         PositionBar();
+
+        // 网络探测与接收端启动在构造函数里就已经放出去了（与首帧渲染并行），这里等它们收尾。
+        // 以前是串行的两个 await（中间还夹着固定 100ms / 160ms 的白等），光这一段就是好几秒。
+        Task network = _startupNetwork ?? PollNetworkAsync();
+        Task receivers = _startupReceivers ?? StartReceiversEarlyAsync();
+        await Task.WhenAll(network, receivers);
+        Bootstrap.Log("网络与接收端就绪");
+
+        RefreshUi();
+        HideBusy();                // 启动阶段没有显示过遮罩时是一次空操作
         FinishIntroWhenReady();    // 程序准备好了：动画放完就收场（没放完就等它）
         await PollMirrorStatusAsync();
         if (App.DemoCast)
@@ -2374,7 +2409,7 @@ public partial class MainWindow : Window
         string stageTitle = session ? deviceLabel : "本机画面";
         string stageSub = session
             ? (string.IsNullOrEmpty(_activeProtocol) ? "已连接 · 实时镜像" : $"已连接 · {_activeProtocol}")
-            : pending ? "正在建立连接…" : "等待设备投屏";
+            : pending ? "正在建立连接…" : _mirrorBusy ? "正在准备接收端…" : "等待设备投屏";
         if (TxtStageTitle.Text != stageTitle) TxtStageTitle.Text = stageTitle;
         if (TxtStageSub.Text != stageSub)
         {

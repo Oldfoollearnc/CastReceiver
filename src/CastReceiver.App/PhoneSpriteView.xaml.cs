@@ -27,6 +27,7 @@ public partial class PhoneSpriteView : UserControl
     private List<BitmapSource>? _frames;
     private Phone3DView? _fallback;
     private bool _initialized;
+    private bool _loading;
     private bool _running;
     private bool _connecting;
     private bool _pointerActive;
@@ -53,57 +54,87 @@ public partial class PhoneSpriteView : UserControl
 
     private void EnsureInitialized()
     {
-        if (_initialized) return;
-        _initialized = true;
+        if (_initialized || _loading) return;
 
+        // 雪碧图是 3200×2400 的 PNG：解码后约 30MB 位图。原先在 Loaded 里同步解码，
+        // 正好压在"窗口刚出现"那一下，会明显发木（启动慢的体感来源之一）。
+        // 现在改成后台 STA 线程解码 + Freeze，界面先出文字与骨架，素材到了再补图。
+        _loading = true;
+        _ = LoadSpriteOffThreadAsync();
+    }
+
+    /// <summary>后台解码雪碧图：完成后再切回界面线程挂上（位图已 Freeze，可跨线程使用）。</summary>
+    private async Task LoadSpriteOffThreadAsync()
+    {
+        List<BitmapSource>? frames = null;
         try
         {
-            string path = Path.Combine(AppContext.BaseDirectory, "Assets", "ui", "phone-turntable.png");
-            if (File.Exists(path))
+            var tcs = new TaskCompletionSource<List<BitmapSource>?>(TaskCreationOptions.RunContinuationsAsynchronously);
+            var thread = new System.Threading.Thread(() =>
             {
-                var sheet = new BitmapImage();
-                sheet.BeginInit();
-                sheet.CacheOption = BitmapCacheOption.OnLoad;
-                sheet.CreateOptions = BitmapCreateOptions.IgnoreImageCache;
-                sheet.UriSource = new Uri(path, UriKind.Absolute);
-                sheet.EndInit();
-                sheet.Freeze();
-
-                int cellWidth = sheet.PixelWidth / Columns;
-                int cellHeight = sheet.PixelHeight / Rows;
-                if (cellWidth <= 0 || cellHeight <= 0)
-                {
-                    throw new InvalidOperationException("雪碧图尺寸异常");
-                }
-
-                var frames = new List<BitmapSource>(UsableFrames);
-                for (int i = 0; i < UsableFrames; i++)
-                {
-                    int column = i % Columns;
-                    int row = i / Columns;
-                    var crop = new CroppedBitmap(sheet, new Int32Rect(
-                        column * cellWidth,
-                        row * cellHeight,
-                        cellWidth,
-                        cellHeight));
-                    crop.Freeze();
-                    frames.Add(crop);
-                }
-
-                _frames = frames;
-                Sprite.Source = frames[CenterFrame];
-                Start();
-                return;
-            }
+                try { tcs.TrySetResult(LoadFrames()); }
+                catch (Exception ex) { tcs.TrySetException(ex); }
+            })
+            {
+                IsBackground = true,
+                // WPF 图像解码要在 STA 线程上；用一个短命线程最省事，也不占线程池
+                Name = "phone-sprite-decode",
+            };
+            thread.SetApartmentState(System.Threading.ApartmentState.STA);
+            thread.Start();
+            frames = await tcs.Task.ConfigureAwait(true);
         }
         catch
         {
-            // 素材损坏/读不到：走 3D 兜底
+            frames = null;   // 素材损坏：走 3D 兜底
+        }
+
+        _loading = false;
+        _initialized = true;
+        if (frames is not null && frames.Count > CenterFrame)
+        {
+            _frames = frames;
+            Sprite.Source = frames[CenterFrame];
+            Start();
+            return;
         }
 
         _fallback = new Phone3DView();
         Sprite.Visibility = Visibility.Collapsed;
         Root.Children.Add(_fallback);
+        Start();
+    }
+
+    /// <summary>在工作线程上把雪碧图切成 31 帧并冻结（冻结后才能交给界面线程）。</summary>
+    private static List<BitmapSource>? LoadFrames()
+    {
+        string path = Path.Combine(AppContext.BaseDirectory, "Assets", "ui", "phone-turntable.png");
+        if (!File.Exists(path)) return null;
+
+        var sheet = new BitmapImage();
+        sheet.BeginInit();
+        sheet.CacheOption = BitmapCacheOption.OnLoad;
+        sheet.CreateOptions = BitmapCreateOptions.IgnoreImageCache;
+        sheet.UriSource = new Uri(path, UriKind.Absolute);
+        sheet.EndInit();
+        sheet.Freeze();
+
+        int cellWidth = sheet.PixelWidth / Columns;
+        int cellHeight = sheet.PixelHeight / Rows;
+        if (cellWidth <= 0 || cellHeight <= 0) throw new InvalidOperationException("雪碧图尺寸异常");
+
+        var frames = new List<BitmapSource>(UsableFrames);
+        for (int i = 0; i < UsableFrames; i++)
+        {
+            var crop = new CroppedBitmap(sheet, new Int32Rect(
+                (i % Columns) * cellWidth,
+                (i / Columns) * cellHeight,
+                cellWidth,
+                cellHeight));
+            crop.Freeze();
+            frames.Add(crop);
+        }
+        return frames;
     }
 
     /// <summary>开始交互（待机页可见时调用）。</summary>

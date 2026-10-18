@@ -595,8 +595,11 @@
                 </StackPanel>
             </Grid>
 
-            <!-- ============ 启动/等待遮罩 ============ -->
-            <Grid x:Name="BusyOverlay" Grid.Row="0" Grid.RowSpan="3" Background="{DynamicResource B.BusyOverlay}">
+            <!-- ============ 启动/等待遮罩 ============
+                 默认收起：启动阶段不再用它挡界面（用户明确要求消除"黑屏 → 转圈 → 再转圈"）。
+                 只有"一键准备网络 / 重启接收端"这类用户主动触发的长操作才临时显示。 -->
+            <Grid x:Name="BusyOverlay" Grid.Row="0" Grid.RowSpan="3" Background="{DynamicResource B.BusyOverlay}"
+                  Visibility="Collapsed">
                 <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
                     <Grid Width="44" Height="44" HorizontalAlignment="Center" RenderTransformOrigin="0.5,0.5">
                         <Grid.RenderTransform>
