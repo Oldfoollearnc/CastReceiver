@@ -1,4 +1,4 @@
-using System.Collections.ObjectModel;
+﻿using System.Collections.ObjectModel;
 using System.IO;
 using System.Reflection;
 using System.Windows;
@@ -440,9 +440,9 @@ public partial class SettingsWindow : Window
                 _suppressIntroUi = true;
                 try
                 {
-                    TxtIntroLength.Text = "品牌动画约 3 秒，不需要裁剪";
+                    TxtIntroLength.Text = "启动加载遮罩，不需要裁剪";
                     TxtIntroRange.Text = "—";
-                    TxtIntroChip.Text = "品牌动画";
+                    TxtIntroChip.Text = "加载遮罩";
                     SldIntroStart.IsEnabled = false;
                     SldIntroEnd.IsEnabled = false;
                     SldIntroExtend.IsEnabled = false;

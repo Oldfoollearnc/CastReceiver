@@ -223,42 +223,29 @@ public partial class App : Application
             Bootstrap.Log("已替换上一个实例，本次启动接管");
         }
 
-        // 开屏：三种情况
+        // 开屏：两种情况
         //   ① 用户选了视频且已起播 → 让开，别盖住它；
-        //   ② 选了"品牌动画"（默认）→ 用原生窗口自绘一段 3.2 秒的品牌开场；
-        //   ③ 没开开屏动画 → 一块静态品牌闪屏，挡住 WPF 启动那一小段。
+        //   ② 其余情况 → 一块**极简加载遮罩**（深色底 + 滚动加载条 + 当前步骤），
+        //      从双击图标一直盖到主窗口首帧渲染完。
+        // 注意：这里 **Host 还没创建**（下面才 new），所以不能引用 Host.Settings ——
+        // 直接轻量读一次配置（缓存过，不会重复读盘）。
         if (NativeIntroWindow.IsPlaying)
         {
             Bootstrap.Log("入场动画已在播放，跳过原生黑幕");
         }
         else
         {
-            // 注意：这里 **Host 还没创建**（下面才 new），所以不能引用 Host.Settings ——
-            // 直接轻量读一次配置（缓存过，不会重复读盘）。
             CastReceiver.Core.Infrastructure.CastSettings startup = CastReceiver.Core.Infrastructure.CastSettings.Load();
             (int sx, int sy, int sw, int sh) = Program.IntroWindowBounds(startup);
 
-            if (ShowIntro && CastReceiver.Core.Infrastructure.IntroClips.IsBrand(startup.IntroSource))
-            {
-                Bootstrap.Log("开始品牌开场动画");
-                NativeSplash.ShowBrandIntro(
-                    ThemeColor("T.SplashBg", "#0B0C0E"),
-                    ThemeColor("T.SplashFg", "#ECEDEF"),
-                    ThemeColor("T.SplashDim", "#A0A6AE"),
-                    ThemeColor("T.SplashLine", "#262A30"),
-                    AccentHex(startup.Accent),
-                    sx, sy, sw, sh);
-            }
-            else
-            {
-                Bootstrap.Log("开始创建原生黑幕");
-                NativeSplash.Show("正在启动…",
-                    ThemeColor("T.SplashBg", "#0B0C0E"),
-                    ThemeColor("T.SplashFg", "#ECEDEF"),
-                    ThemeColor("T.SplashDim", "#A0A6AE"),
-                    ThemeColor("T.SplashLine", "#262A30"),
-                    sx, sy, sw, sh);
-            }
+            Bootstrap.Log("开始显示启动遮罩");
+            NativeSplash.Show("正在启动…",
+                ThemeColor("T.SplashBg", "#0B0C0E"),
+                ThemeColor("T.SplashFg", "#ECEDEF"),
+                ThemeColor("T.SplashDim", "#A0A6AE"),
+                ThemeColor("T.SplashLine", "#262A30"),
+                sx, sy, sw, sh,
+                AccentHex(startup.Accent));
         }
 
         // 宿主很轻（配置 + 日志 + Miracast 服务对象）
@@ -289,11 +276,8 @@ public partial class App : Application
         window.ContentRendered += (_, _) =>
         {
             Host.Log.Info("startup", $"启动阶段：主窗口已渲染 {SinceProcessStart():F0}ms");
-            // 品牌开场是自己演完再退场的（约 3.2 秒），首帧渲染完就关会把动画砍掉
-            if (!NativeSplash.BrandRunning)
-            {
-                try { NativeSplash.Close(); } catch { }
-            }
+            // 主窗口已经画出来了，遮罩立刻收掉（遮罩只是用来补 WPF 启动那 1–2 秒的空窗）
+            try { NativeSplash.Close(); } catch { }
             if (window is MainWindow main) main.FadeInWindow();
         };
         window.Show();

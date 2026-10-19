@@ -337,6 +337,8 @@ public partial class MainWindow : Window
     {
         try
         {
+            // 启动遮罩上如实写清楚"在等什么"（这步通常要 2–4 秒）
+            NativeSplash.SetStep("正在准备接收端…");
             if (_host.Settings.AutoStartMiracast && !_host.Miracast.IsListening)
             {
                 await StartMirrorAsync(showError: false);   // 内部同时会拉起 AirPlay

@@ -1,4 +1,4 @@
-namespace CastReceiver.Core.Infrastructure;
+﻿namespace CastReceiver.Core.Infrastructure;
 
 /// <summary>
 /// 启动入场动画的素材解析规则。
@@ -25,7 +25,7 @@ public static class IntroClips
     /// </summary>
     public static IReadOnlyList<Clip> BuiltIn { get; } = new[]
     {
-        new Clip(Brand, "品牌动画（推荐）", ""),
+        new Clip(Brand, "极简加载（推荐）", ""),
         new Clip("builtin", "内置视频片段", "builtin-intro.mp4"),
     };
 
@@ -70,7 +70,7 @@ public static class IntroClips
     /// <summary>界面上显示的当前选择（找不到文件时如实说明）。</summary>
     public static string Describe(string? setting, string baseDirectory)
     {
-        if (IsBrand(setting)) return "品牌动画（程序内置，约 3 秒）";
+        if (IsBrand(setting)) return "启动加载遮罩（程序内置）";
 
         if (!string.IsNullOrWhiteSpace(setting) && setting.StartsWith(FilePrefix, StringComparison.OrdinalIgnoreCase))
         {

@@ -10,30 +10,35 @@ namespace CastReceiver.App;
 
 /// <summary>
 /// 待机页的"产品渲染图"：由 Blender 工程（D:\Blender\projects\phone-anim\vivo_x500pro.blend）
-/// 渲染的转台，合成一张 10×6 雪碧图；这里只取前 31 帧（-25° → +25° 单调变化），
-/// 用鼠标左右位置直接控制旋转角度，上下位置控制轻微视差 —— 比单纯平移更像"真的在转"。
+/// 渲染的 150 帧转台，合成一张 15×10 雪碧图（-25° → +25° → -25°，5 秒一个来回）。
+/// 转台自己一直转（展示机身），鼠标上下移动给一点视差；左右移动不再驱动旋转 ——
+/// 两条输入叠在一起会互相打架，反而不像"在看一台机器"。
+///
+/// 动画用 <see cref="CompositionTarget.Rendering"/> 跟着屏幕刷新走（而不是 DispatcherTimer）：
+/// 定时器在启动/解码那几秒会被挤到 10fps 左右，看起来就是"一顿一顿"。
 ///
 /// 连接成功后 MainWindow 会调 <see cref="PlayConnectTransition"/>：回到正面、轻微放大、上浮，
 /// 随后整块引导淡出；素材缺失时自动回落到 <see cref="Phone3DView"/>。
 /// </summary>
 public partial class PhoneSpriteView : UserControl
 {
-    private const int Columns = 10;
-    private const int Rows = 6;
-    /// <summary>雪碧图里可用的帧数：60 帧刚好是 -25° → +25° → -25° 的一个完整来回。</summary>
-    private const int UsableFrames = 60;
-    /// <summary>正面（0°）那一帧。60 帧的中间是 +25°，不是正面 —— 别用 UsableFrames / 2。</summary>
-    private const int CenterFrame = 15;
+    private const int Columns = 15;
+    private const int Rows = 10;
+    /// <summary>雪碧图里的帧数：150 帧 = 30fps × 5 秒，正好一个完整来回。</summary>
+    private const int UsableFrames = 150;
+    /// <summary>正面（0°）那一帧。整段从 -25° 摆到 +25°，正面在 1/4 处（第 38 帧）。</summary>
+    private const int CenterFrame = 37;
 
-    /// <summary>自动转台速度：60 帧 / 9fps ≈ 6.7 秒一个来回。</summary>
-    private const double RotationFramesPerSecond = 9.0;
+    /// <summary>自动转台速度：30fps，5 秒完成一次左右来回。</summary>
+    private const double RotationFramesPerSecond = 30.0;
 
-    private readonly DispatcherTimer _timer;
     private List<BitmapSource>? _frames;
     private Phone3DView? _fallback;
     private bool _initialized;
     private bool _loading;
     private bool _running;
+    private bool _renderingHooked;
+    private TimeSpan _lastRenderTime;
     private bool _connecting;
     private bool _pointerActive;
 
@@ -46,8 +51,6 @@ public partial class PhoneSpriteView : UserControl
     public PhoneSpriteView()
     {
         InitializeComponent();
-        _timer = new DispatcherTimer(DispatcherPriority.Render) { Interval = TimeSpan.FromMilliseconds(33) };
-        _timer.Tick += (_, _) => OnTick();
 
         Loaded += (_, _) => EnsureInitialized();
         Unloaded += (_, _) => Stop();
@@ -162,7 +165,7 @@ public partial class PhoneSpriteView : UserControl
         if (_running) return;
         _running = true;
         _connecting = false;
-        _timer.Start();
+        StartRendering();
     }
 
     /// <summary>停止（连接中 / 投屏中 / 遮挡时调用）。</summary>
@@ -181,7 +184,7 @@ public partial class PhoneSpriteView : UserControl
         _running = false;
         _connecting = false;
         _pointerActive = false;
-        _timer.Stop();
+        StopRendering();
 
         if (_frames is not null)
         {
@@ -249,7 +252,7 @@ public partial class PhoneSpriteView : UserControl
         if (!_running)
         {
             _running = true;
-            _timer.Start();
+            StartRendering();
         }
     }
 
@@ -298,7 +301,32 @@ public partial class PhoneSpriteView : UserControl
         Start();
     }
 
-    private void OnTick()
+    /// <summary>跟着屏幕刷新（vsync）跑，比 DispatcherTimer 稳，也不会被启动期的忙碌挤成 10fps。</summary>
+    private void StartRendering()
+    {
+        _lastRenderTime = TimeSpan.Zero;
+        if (_renderingHooked) return;
+        CompositionTarget.Rendering += OnRendering;
+        _renderingHooked = true;
+    }
+
+    private void StopRendering()
+    {
+        if (!_renderingHooked) return;
+        CompositionTarget.Rendering -= OnRendering;
+        _renderingHooked = false;
+    }
+
+    private void OnRendering(object? sender, EventArgs e)
+    {
+        if (!_running) return;
+        TimeSpan now = (e as RenderingEventArgs)?.RenderingTime ?? TimeSpan.Zero;
+        double dt = _lastRenderTime == TimeSpan.Zero ? 1.0 / 60 : (now - _lastRenderTime).TotalSeconds;
+        _lastRenderTime = now;
+        OnTick(Math.Clamp(dt, 0.001, 0.1));
+    }
+
+    private void OnTick(double dt)
     {
         if (_frames is null) return;
 
@@ -319,7 +347,7 @@ public partial class PhoneSpriteView : UserControl
         else
         {
             // 自身转台：一直缓慢转，展示机身；鼠标只影响上下视差
-            _frameIndex += RotationFramesPerSecond * 0.033;
+            _frameIndex += RotationFramesPerSecond * dt;
             if (_frameIndex >= UsableFrames) _frameIndex -= UsableFrames;
 
             if (pointerActive)
@@ -342,7 +370,7 @@ public partial class PhoneSpriteView : UserControl
         PointerScale.ScaleX += (targetScale - PointerScale.ScaleX) * 0.16;
         PointerScale.ScaleY = PointerScale.ScaleX;
 
-        _floatTime += 0.033;
+        _floatTime += dt;
         Float.Y = Math.Sin(_floatTime * 1.2) * 2.0;
     }
 }
