@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -1309,6 +1309,13 @@ public partial class MainWindow : Window
 
             if (!App.ShowIntro) { _host.Log.Info("startup", "按设置跳过入场动画"); return; }
 
+            // 品牌动画：原生窗口直接画，而且它本来就在主窗口上面 —— 这里不叠加任何遮罩
+            if (IntroClips.IsBrand(_host.Settings.IntroSource))
+            {
+                _host.Log.Info("startup", "品牌开场动画由原生窗口播放（界面内不叠加遮罩）");
+                return;
+            }
+
             // 回退路径（原生窗没起来时才用）：素材同样按设置解析（内置片段或用户导入的文件）
             string video = IntroClips.ResolvePath(_host.Settings.IntroSource, AppContext.BaseDirectory);
             if (video.Length == 0 || !System.IO.File.Exists(video))
@@ -2388,32 +2395,20 @@ public partial class MainWindow : Window
         SwMirror.IsChecked = listening;
         _suppressToggle = false;
 
-        string state, sub;
+        string state;
         string dotKey;
-        if (_mirrorBusy) { state = _busyText; sub = ""; dotKey = "B.Warn"; }
-        else if (mirroring) { state = "镜像中"; sub = ""; dotKey = "B.Ok"; }
-        else if (pending) { state = "手机正在连接"; sub = ""; dotKey = "B.Warn"; }
-        else if (listening) { state = "等待手机连接"; sub = ""; dotKey = "B.TextDim"; }
-        else if (networkReady) { state = "接收端未开启"; sub = ""; dotKey = "B.Warn"; }
-        else { state = "需要放行网络"; sub = ""; dotKey = "B.Warn"; }
+        if (_mirrorBusy) { state = _busyText; dotKey = "B.Warn"; }
+        else if (mirroring) { state = "镜像中"; dotKey = "B.Ok"; }
+        else if (pending) { state = "手机正在连接"; dotKey = "B.Warn"; }
+        else if (listening) { state = "等待手机连接"; dotKey = "B.TextDim"; }
+        else if (networkReady) { state = "接收端未开启"; dotKey = "B.Warn"; }
+        else { state = "需要放行网络"; dotKey = "B.Warn"; }
         // 用资源引用而不是取一次 Brush：否则切换主题时颜色不会跟着变
         DotState.SetResourceReference(System.Windows.Shapes.Shape.FillProperty, dotKey);
         if (TxtStateBig.Text != state) TxtStateBig.Text = state;
 
-        // ---- 顶栏的"活状态"与舞台顶栏（一眼可见的一句话，不必先看侧栏） ----
+        // ---- 舞台顶栏（顶栏中间那句状态已去掉：这里就是唯一的状态位） ----
         bool session = mirroring || _demoCast;
-        string headerState = _mirrorBusy ? "正在准备"
-            : mirroring ? "投屏中"
-            : pending ? "正在连接"
-            : listening ? "等待设备"
-            : networkReady ? "接收端已关闭"
-            : "需要放行网络";
-        if (TxtHeaderState.Text != headerState)
-        {
-            TxtHeaderState.Text = headerState;
-            Motion.FadeIn(TxtHeaderState, 280);
-        }
-        DotHeader.SetResourceReference(System.Windows.Shapes.Shape.FillProperty, dotKey);
 
         string deviceLabel = CurrentDeviceLabel();
         string stageTitle = session ? deviceLabel : "本机画面";
@@ -4002,8 +3997,11 @@ public partial class MainWindow : Window
 
             // 双击画面 = 进 / 出全屏（Esc 退出全屏在窗口级按键里）。
             // 「电脑控制手机」正在接管鼠标时让位：那种场景下双击的意思就是"在手机上点两下"。
+            //
+            // 判定用"画面区"而不是"视频宿主"：没有投屏内容时宿主是折叠的，
+            // 那时也应该能双击全屏（用户反馈）。舞台顶栏在画面区之外，双击按钮不会误触。
             if (e.ClickCount == 2 && !_masked && !PhoneOwnsClicks()
-                && InsideHost(MiracastHost, e.GetPosition(MiracastHost)))
+                && IsInsideSurface(StageLayout, e.GetPosition(StageLayout)))
             {
                 SetFullscreen(!_fullscreen);
                 e.Handled = true;
@@ -4081,6 +4079,11 @@ public partial class MainWindow : Window
     private static bool InsideHost(Interop.CompositionVideoHost host, Point point)
         => host.ActualWidth > 1 && host.ActualHeight > 1
            && point.X >= 0 && point.Y >= 0 && point.X <= host.ActualWidth && point.Y <= host.ActualHeight;
+
+    /// <summary>某个位置是不是落在这块布局区域里（用于"没有画面时也能双击全屏"）。</summary>
+    private static bool IsInsideSurface(FrameworkElement area, Point point)
+        => area.ActualWidth > 1 && area.ActualHeight > 1
+           && point.X >= 0 && point.Y >= 0 && point.X <= area.ActualWidth && point.Y <= area.ActualHeight;
 
     // 注意：下面这两个原来是 ⑧ 用的，现在**保持生效**（状态浮层靠它算画面黑边，
     // 好把浮层放进黑边里、不压住画面）。恢复 ⑧ 时不要重复定义它们。

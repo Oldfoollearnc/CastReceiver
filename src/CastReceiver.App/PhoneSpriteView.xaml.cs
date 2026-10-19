@@ -1,4 +1,4 @@
-using System.IO;
+﻿using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
@@ -20,8 +20,13 @@ public partial class PhoneSpriteView : UserControl
 {
     private const int Columns = 10;
     private const int Rows = 6;
-    private const int UsableFrames = 31;        // 0..30：-25° → +25°
-    private const int CenterFrame = UsableFrames / 2;
+    /// <summary>雪碧图里可用的帧数：60 帧刚好是 -25° → +25° → -25° 的一个完整来回。</summary>
+    private const int UsableFrames = 60;
+    /// <summary>正面（0°）那一帧。60 帧的中间是 +25°，不是正面 —— 别用 UsableFrames / 2。</summary>
+    private const int CenterFrame = 15;
+
+    /// <summary>自动转台速度：60 帧 / 9fps ≈ 6.7 秒一个来回。</summary>
+    private const double RotationFramesPerSecond = 9.0;
 
     private readonly DispatcherTimer _timer;
     private List<BitmapSource>? _frames;
@@ -31,13 +36,10 @@ public partial class PhoneSpriteView : UserControl
     private bool _running;
     private bool _connecting;
     private bool _pointerActive;
-    private bool _hasIdlePhase;
 
     private double _frameIndex = CenterFrame;
     private int _lastFrame = -1;
-    private double _idlePhase;
     private double _floatTime;
-    private double _pointerX;
     private double _pointerY;
     private DateTime _lastPointerUtc = DateTime.MinValue;
 
@@ -179,7 +181,6 @@ public partial class PhoneSpriteView : UserControl
         _running = false;
         _connecting = false;
         _pointerActive = false;
-        _hasIdlePhase = false;
         _timer.Stop();
 
         if (_frames is not null)
@@ -207,8 +208,7 @@ public partial class PhoneSpriteView : UserControl
 
         _connecting = false;
         _pointerActive = false;
-        _hasIdlePhase = false;
-        _pointerX = _pointerY = 0;
+        _pointerY = 0;
         _frameIndex = CenterFrame;
         _lastFrame = -1;
         if (_frames is not null) Sprite.Source = _frames[CenterFrame];
@@ -237,8 +237,7 @@ public partial class PhoneSpriteView : UserControl
 
         _connecting = true;
         _pointerActive = false;
-        _pointerX = _pointerY = 0;
-        _hasIdlePhase = false;
+        _pointerY = 0;
 
         if (!Motion.Enabled)
         {
@@ -254,10 +253,13 @@ public partial class PhoneSpriteView : UserControl
         }
     }
 
-    /// <summary>鼠标在舞台上移动时给旋转 + 视差；<paramref name="nx"/> / <paramref name="ny"/> 取 -1…1。</summary>
+    /// <summary>
+    /// 鼠标在舞台上移动时给一点上下视差（<paramref name="nx"/> / <paramref name="ny"/> 取 -1…1）。
+    /// **横向不再驱动旋转**：转台自己会一直转，鼠标左右划过去只会让手机乱跳，
+    /// 手感反而不像"在看一台机器"。
+    /// </summary>
     public void SetPointer(double nx, double ny)
     {
-        _pointerX = Math.Clamp(nx, -1, 1);
         _pointerY = Math.Clamp(ny, -1, 1);
         _pointerActive = true;
         _lastPointerUtc = DateTime.UtcNow;
@@ -266,7 +268,6 @@ public partial class PhoneSpriteView : UserControl
     public void ResetPointer()
     {
         _pointerActive = false;
-        _hasIdlePhase = false;
     }
 
     /// <summary>入场：0.94 倍 + 淡入；然后开始交互。</summary>
@@ -303,51 +304,40 @@ public partial class PhoneSpriteView : UserControl
 
         bool pointerActive = !_connecting
                              && _pointerActive
-                             && (DateTime.UtcNow - _lastPointerUtc).TotalSeconds < 1.25;
+                             && (DateTime.UtcNow - _lastPointerUtc).TotalSeconds < 2.0;
 
-        double targetFrame;
-        double targetX = 0;
         double targetY = 0;
         double targetScale = 1;
 
         if (_connecting)
         {
             // 连接收尾：回正面、放大、上浮
-            targetFrame = CenterFrame;
+            _frameIndex += (CenterFrame - _frameIndex) * 0.14;
             targetScale = 1.10;
             targetY = -10;
         }
-        else if (pointerActive)
-        {
-            // 左右直接映射到 -25°…+25°；上下给 6px 视差
-            targetFrame = (_pointerX + 1) * 0.5 * (UsableFrames - 1);
-            targetX = _pointerX * 2.0;
-            targetY = _pointerY * 6.0;
-            targetScale = 1 + Math.Abs(_pointerX) * 0.008;
-            _hasIdlePhase = false;
-        }
         else
         {
-            double half = (UsableFrames - 1) / 2.0;
-            if (!_hasIdlePhase)
+            // 自身转台：一直缓慢转，展示机身；鼠标只影响上下视差
+            _frameIndex += RotationFramesPerSecond * 0.033;
+            if (_frameIndex >= UsableFrames) _frameIndex -= UsableFrames;
+
+            if (pointerActive)
             {
-                double t = Math.Clamp((_frameIndex - CenterFrame) / half, -1, 1);
-                _idlePhase = Math.Asin(t);
-                _hasIdlePhase = true;
+                targetY = _pointerY * 7.0;
+                targetScale = 1 + Math.Abs(_pointerY) * 0.006;
             }
-            _idlePhase += 0.033 * (2 * Math.PI / 7.5);
-            targetFrame = CenterFrame + Math.Sin(_idlePhase) * half;
         }
 
-        _frameIndex += (targetFrame - _frameIndex) * 0.16;
-        int frame = Math.Clamp((int)Math.Round(_frameIndex), 0, UsableFrames - 1);
+        int frame = ((int)Math.Round(_frameIndex) % UsableFrames + UsableFrames) % UsableFrames;
         if (frame != _lastFrame)
         {
             _lastFrame = frame;
             Sprite.Source = _frames[frame];
         }
 
-        Parallax.X += (targetX - Parallax.X) * 0.18;
+        // 横向视差归零（不再跟随鼠标左右）
+        Parallax.X += (0 - Parallax.X) * 0.18;
         Parallax.Y += (targetY - Parallax.Y) * 0.18;
         PointerScale.ScaleX += (targetScale - PointerScale.ScaleX) * 0.16;
         PointerScale.ScaleY = PointerScale.ScaleX;

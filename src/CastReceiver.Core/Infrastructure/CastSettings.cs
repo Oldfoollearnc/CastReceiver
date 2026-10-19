@@ -268,10 +268,16 @@ public sealed class CastSettings
     public bool ShowIntro { get; set; } = true;
 
     /// <summary>
-    /// 用哪个启动视频：内置片段的 key（如 <c>fleet</c>），或 <c>file:完整路径</c> 表示用户导入的文件。
-    /// 留空＝默认内置。导入的文件**直接播放、不转码**。
+    /// 用哪个启动动画：<c>brand</c>（程序自绘的品牌动画，默认）/ 内置视频片段的 key
+    /// （如 <c>builtin</c>），或 <c>file:完整路径</c> 表示用户导入的文件。
     /// </summary>
-    public string IntroSource { get; set; } = "builtin";   // 内置开场（随安装包发布；用户也可以改成 file:自己的文件）
+    public string IntroSource { get; set; } = IntroClips.Brand;
+
+    /// <summary>
+    /// 迁移标记：老版本默认值是内置视频片段（一段与产品无关的片子），观感差。
+    /// 升级时把"没选过 / 还是默认值"的用户切到品牌动画；用户后来手动选了视频就不再动。
+    /// </summary>
+    public bool IntroBrandMigrated { get; set; }
 
     /// <summary>从第几秒开始播（0＝从头）。只裁时长，不动画质。</summary>
     /// <summary>内置开场的起播点（秒）。1.55 对应源片段 47.55s —— 裁剪时开头多留了 1.55s。</summary>
@@ -474,6 +480,19 @@ public sealed class CastSettings
         string deviceName = ResolveDeviceName(s.DeviceName);
         if (!string.Equals(deviceName, s.DeviceName, StringComparison.Ordinal)) { s.DeviceName = deviceName; dirty = true; }
         if (s.HttpPort is < 1024 or > 65535) { s.HttpPort = 2869; dirty = true; }
+
+        // 开屏动画：老默认是"内置视频片段"（那段与产品无关的片子）。升级时把默认值换掉，
+        // 用户明确选过的视频/自定义文件保持不动。
+        if (!s.IntroBrandMigrated)
+        {
+            if (string.IsNullOrWhiteSpace(s.IntroSource)
+                || string.Equals(s.IntroSource, "builtin", StringComparison.OrdinalIgnoreCase))
+            {
+                s.IntroSource = IntroClips.Brand;
+            }
+            s.IntroBrandMigrated = true;
+            dirty = true;
+        }
 
         // 清理一次开发期的试验强调色（极光蓝紫）：产品方向已回到原来的薄荷绿极简风。
         // 之后用户自己在设置里选的强调色不会再被改动。

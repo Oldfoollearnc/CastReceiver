@@ -69,6 +69,9 @@ internal static class Program
             CastSettings settings = CastSettings.Load();
             if (!settings.ShowIntro) return;
 
+            // 品牌动画是程序自绘的（App.OnStartup 里用原生窗口画），这里不需要起播视频
+            if (IntroClips.IsBrand(settings.IntroSource)) return;
+
             string video = IntroClips.ResolvePath(settings.IntroSource, AppContext.BaseDirectory);
             if (video.Length == 0) return;
 

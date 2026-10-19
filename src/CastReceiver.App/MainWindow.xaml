@@ -80,12 +80,9 @@
                                Margin="14,0,0,0" VerticalAlignment="Center" MaxWidth="200" TextTrimming="CharacterEllipsis" />
                 </StackPanel>
 
-                <!-- 中间只留一句状态，不加底色/彩色圆点 -->
-                <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
-                    <Ellipse x:Name="DotHeader" Width="6" Height="6" Fill="{DynamicResource B.TextFaint}" VerticalAlignment="Center" />
-                    <TextBlock x:Name="TxtHeaderState" Text="等待连接" FontSize="11.5" Margin="7,0,0,0"
-                               Foreground="{DynamicResource B.TextFaint}" VerticalAlignment="Center" />
-                </StackPanel>
+                <!-- 中间的状态原来放在这里（"等待设备/投屏中"），
+                     但画面左上角的舞台顶栏已经有同一份信息，重复一次只会让顶栏更挤。
+                     现在顶栏只留品牌 + 本机名 + 右侧动作。 -->
 
                 <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,4,0"
                             shell:WindowChrome.IsHitTestVisibleInChrome="True">
@@ -523,11 +520,13 @@
                     </StackPanel>
                 </ScrollViewer>
 
-                <!-- 侧栏折叠把手：贴在信息栏左缘的一枚窄条（视频客户端那种）。
-                     放在**画面外面**：画面是 HwndHost，压在上面的 WPF 元素会被它盖住。
-                     收起后列宽归零，靠这点负边距它仍然留在窗口右缘，随时能把侧栏拉回来。 -->
-                <Button x:Name="BtnSideToggle" Grid.Column="1" HorizontalAlignment="Left" VerticalAlignment="Center"
-                        Margin="-7,0,0,0" Style="{StaticResource S.SideHandle}" Click="BtnSideToggle_Click"
+                <!-- 侧栏折叠把手：放在**画面列的右侧留白里**（不是侧栏列）。
+                     原先挂在侧栏列上、用负边距骑在边界上：侧栏一收起列宽归零，
+                     按钮就被推到窗口边缘、只露出一半（用户反馈）。放进留白里，
+                     展开/收起两种状态都在窗口内，宽度恒定。
+                     仍然放在画面外面：画面是 HwndHost，压在上面的 WPF 元素会被它盖住。 -->
+                <Button x:Name="BtnSideToggle" Grid.Column="0" HorizontalAlignment="Right" VerticalAlignment="Center"
+                        Style="{StaticResource S.SideHandle}" Click="BtnSideToggle_Click"
                         AutomationProperties.Name="折叠侧栏" ToolTip="收起右侧信息栏（只看画面）">
                     <TextBlock x:Name="SideToggleGlyph" Text="&#xE76C;" />
                 </Button>

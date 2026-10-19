@@ -112,6 +112,17 @@ public partial class App : Application
         ["Blue"] = ("#60A5FA", "#0A1D33"),
     };
 
+    /// <summary>强调色预设里"当前这套"的 #RRGGBB（原生开屏动画要用它画细线）。</summary>
+    public static string AccentHex(string accent)
+    {
+        (string hex, _) = accent switch
+        {
+            "System" => FromSystemAccent(),
+            _ => Accents.TryGetValue(accent, out var pair) ? pair : Accents["Mint"],
+        };
+        return hex;
+    }
+
     /// <summary>应用强调色（Mint/Amber/Violet/Rose/Blue/System）。</summary>
     public static void ApplyAccent(string accent)
     {
@@ -212,26 +223,42 @@ public partial class App : Application
             Bootstrap.Log("已替换上一个实例，本次启动接管");
         }
 
-        // 原生黑幕：只在"没有入场动画"时才需要它来挡住 WPF 启动那 1.5 秒。
-        // 有入场动画时必须让开 —— 它是一块置顶全屏黑窗，会**盖住入场画面**（用户实测就是这样：
-        // 先一整屏黑，然后才是主界面的转圈等待）。它用上次关闭时的窗口矩形，不再是全屏。
+        // 开屏：三种情况
+        //   ① 用户选了视频且已起播 → 让开，别盖住它；
+        //   ② 选了"品牌动画"（默认）→ 用原生窗口自绘一段 3.2 秒的品牌开场；
+        //   ③ 没开开屏动画 → 一块静态品牌闪屏，挡住 WPF 启动那一小段。
         if (NativeIntroWindow.IsPlaying)
         {
             Bootstrap.Log("入场动画已在播放，跳过原生黑幕");
         }
         else
         {
-            Bootstrap.Log("开始创建原生黑幕");
-            // 注意：这里 **Host 还没创建**（下面第 220 行才 new），
-            // 所以不能引用 Host.Settings —— 直接轻量读一次配置（就为了拿上次的窗口矩形）。
-            // 之前写成 Host.Settings 直接把启动打崩了（NullReferenceException）。
-            (int sx, int sy, int sw, int sh) = Program.IntroWindowBounds(CastReceiver.Core.Infrastructure.CastSettings.Load());
-            NativeSplash.Show("正在启动…",
-                ThemeColor("T.SplashBg", "#0B0C0E"),
-                ThemeColor("T.SplashFg", "#ECEDEF"),
-                ThemeColor("T.SplashDim", "#A0A6AE"),
-                ThemeColor("T.SplashLine", "#262A30"),
-                sx, sy, sw, sh);
+            // 注意：这里 **Host 还没创建**（下面才 new），所以不能引用 Host.Settings ——
+            // 直接轻量读一次配置（缓存过，不会重复读盘）。
+            CastReceiver.Core.Infrastructure.CastSettings startup = CastReceiver.Core.Infrastructure.CastSettings.Load();
+            (int sx, int sy, int sw, int sh) = Program.IntroWindowBounds(startup);
+
+            if (ShowIntro && CastReceiver.Core.Infrastructure.IntroClips.IsBrand(startup.IntroSource))
+            {
+                Bootstrap.Log("开始品牌开场动画");
+                NativeSplash.ShowBrandIntro(
+                    ThemeColor("T.SplashBg", "#0B0C0E"),
+                    ThemeColor("T.SplashFg", "#ECEDEF"),
+                    ThemeColor("T.SplashDim", "#A0A6AE"),
+                    ThemeColor("T.SplashLine", "#262A30"),
+                    AccentHex(startup.Accent),
+                    sx, sy, sw, sh);
+            }
+            else
+            {
+                Bootstrap.Log("开始创建原生黑幕");
+                NativeSplash.Show("正在启动…",
+                    ThemeColor("T.SplashBg", "#0B0C0E"),
+                    ThemeColor("T.SplashFg", "#ECEDEF"),
+                    ThemeColor("T.SplashDim", "#A0A6AE"),
+                    ThemeColor("T.SplashLine", "#262A30"),
+                    sx, sy, sw, sh);
+            }
         }
 
         // 宿主很轻（配置 + 日志 + Miracast 服务对象）
@@ -262,7 +289,11 @@ public partial class App : Application
         window.ContentRendered += (_, _) =>
         {
             Host.Log.Info("startup", $"启动阶段：主窗口已渲染 {SinceProcessStart():F0}ms");
-            try { NativeSplash.Close(); } catch { }
+            // 品牌开场是自己演完再退场的（约 3.2 秒），首帧渲染完就关会把动画砍掉
+            if (!NativeSplash.BrandRunning)
+            {
+                try { NativeSplash.Close(); } catch { }
+            }
             if (window is MainWindow main) main.FadeInWindow();
         };
         window.Show();

@@ -432,6 +432,29 @@ public partial class SettingsWindow : Window
         try
         {
             string source = CurrentIntroSource();
+
+            // 品牌动画是程序自绘的固定时长，没有可裁剪的素材
+            if (IntroClips.IsBrand(source))
+            {
+                bool wasSuppressedBrand = _suppressIntroUi;
+                _suppressIntroUi = true;
+                try
+                {
+                    TxtIntroLength.Text = "品牌动画约 3 秒，不需要裁剪";
+                    TxtIntroRange.Text = "—";
+                    TxtIntroChip.Text = "品牌动画";
+                    SldIntroStart.IsEnabled = false;
+                    SldIntroEnd.IsEnabled = false;
+                    SldIntroExtend.IsEnabled = false;
+                }
+                finally { _suppressIntroUi = wasSuppressedBrand; }
+                return;
+            }
+
+            SldIntroStart.IsEnabled = true;
+            SldIntroEnd.IsEnabled = true;
+            SldIntroExtend.IsEnabled = true;
+
             string path = source.Length > 0 ? IntroClips.ResolvePath(source, AppContext.BaseDirectory) : "";
             double? seconds = path.Length > 0 ? Mp4Probe.TryGetDurationSeconds(path) : null;
 
@@ -1532,11 +1555,23 @@ public partial class SettingsWindow : Window
 
     private void TxtName_TextChanged(object sender, System.Windows.Controls.TextChangedEventArgs e)
     {
-        if (!_loaded) return;
+        if (!_loaded || _restoringName) return;
         AutoSave();
         // 名字要真正生效必须重建接收广播（约 1–3 秒），所以防抖：停止输入 0.7 秒后再应用
         _nameApplyTimer.Stop();
         _nameApplyTimer.Start();
+    }
+
+    /// <summary>正在把"清空后恢复默认名"写回输入框：这时产生的 TextChanged 不再触发保存。</summary>
+    private bool _restoringName;
+
+    /// <summary>把默认名写回输入框（不触发自动保存，也不会被当成"用户改名"再应用一次）。</summary>
+    private void RestoreNameBox(string name)
+    {
+        if (string.Equals(TxtName.Text, name, StringComparison.Ordinal)) return;
+        _restoringName = true;
+        try { TxtName.Text = name; }
+        finally { _restoringName = false; }
     }
 
     /// <summary>失焦就立刻应用，不必等防抖 —— 用户改完名字往往马上就去看手机。</summary>
@@ -1561,7 +1596,15 @@ public partial class SettingsWindow : Window
     {
         if (!_loaded) return;
         string name = TxtName.Text.Trim();
-        if (name.Length == 0 || string.Equals(name, _appliedDeviceName, StringComparison.Ordinal))
+        if (name.Length == 0)
+        {
+            // 删光 = 恢复默认名：输入框写回去、配置也立刻存下来，再按新名重新广播
+            name = CastSettings.DefaultDeviceName;
+            RestoreNameBox(name);
+            _host.Settings.DeviceName = name;
+            _host.Settings.Save();
+        }
+        if (string.Equals(name, _appliedDeviceName, StringComparison.Ordinal))
         {
             return;
         }
@@ -1595,7 +1638,15 @@ public partial class SettingsWindow : Window
     {
         var s = _host.Settings;
         string name = TxtName.Text.Trim();
-        if (name.Length > 0) s.DeviceName = name;
+        if (name.Length == 0)
+        {
+            // 清空输入框 = 恢复默认名（当前 Windows 账户名）。
+            // 这里先只把配置写成默认名，**不立刻回填输入框** —— 用户可能只是
+            // 全选删掉准备重新输入，马上塞回默认名会让后面的输入接在它后面。
+            // 输入框的回填交给 0.7 秒防抖（ApplyDeviceNameToReceiverAsync）或失焦时做。
+            name = CastSettings.DefaultDeviceName;
+        }
+        s.DeviceName = name;
         s.AutoStartMiracast = SwAutoStart.IsChecked == true;
         s.MiracastConfirmConnection = SwConfirm.IsChecked == true;
         s.MuteAudio = SwMute.IsChecked == true;

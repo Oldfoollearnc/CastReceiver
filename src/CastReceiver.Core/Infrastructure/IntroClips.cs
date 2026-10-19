@@ -13,14 +13,25 @@ public static class IntroClips
     public sealed record Clip(string Key, string Title, string FileName);
 
     /// <summary>
+    /// 品牌动画：**没有视频文件**，由程序自己画（原生窗口里的名字 + 细线 + 标语，约 3 秒）。
+    /// 作为默认开屏——不依赖任何素材、不用解码 4K，观感统一，也不会出现"默认放一段无关片段"。
+    /// </summary>
+    public const string Brand = "brand";
+
+    /// <summary>
     /// 内置片段清单：发布时由 build.ps1 把 <c>assets/intro/&lt;FileName&gt;</c> 复制到
     /// 程序目录的 <c>Assets/intro/</c> 下（Inno 的 [Files] 会连整个目录一起打进安装包）。
     /// 文件名用纯 ASCII，避免安装器/压缩环节的编码麻烦。
     /// </summary>
     public static IReadOnlyList<Clip> BuiltIn { get; } = new[]
     {
-        new Clip("builtin", "内置开场", "builtin-intro.mp4"),
+        new Clip(Brand, "品牌动画（推荐）", ""),
+        new Clip("builtin", "内置视频片段", "builtin-intro.mp4"),
     };
+
+    /// <summary>设置里选的是不是"品牌动画"（不需要素材文件）。</summary>
+    public static bool IsBrand(string? setting)
+        => string.Equals(setting, Brand, StringComparison.OrdinalIgnoreCase);
 
     /// <summary>设置里"自定义"用的前缀：自定义项存成 <c>file:完整路径</c>。</summary>
     public const string FilePrefix = "file:";
@@ -32,6 +43,9 @@ public static class IntroClips
     /// </summary>
     public static string ResolvePath(string? setting, string baseDirectory)
     {
+        // 品牌动画是程序自己画的，不读文件
+        if (IsBrand(setting)) return "";
+
         if (!string.IsNullOrWhiteSpace(setting))
         {
             if (setting.StartsWith(FilePrefix, StringComparison.OrdinalIgnoreCase))
@@ -56,6 +70,8 @@ public static class IntroClips
     /// <summary>界面上显示的当前选择（找不到文件时如实说明）。</summary>
     public static string Describe(string? setting, string baseDirectory)
     {
+        if (IsBrand(setting)) return "品牌动画（程序内置，约 3 秒）";
+
         if (!string.IsNullOrWhiteSpace(setting) && setting.StartsWith(FilePrefix, StringComparison.OrdinalIgnoreCase))
         {
             string custom = setting[FilePrefix.Length..].Trim();
